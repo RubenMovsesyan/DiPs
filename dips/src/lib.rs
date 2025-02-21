@@ -1,14 +1,54 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+use byte_slice_cast::*;
+use gstreamer::{
+    element_error,
+    glib::{self, closure::TryFromClosureReturnValue},
+    prelude::{ElementExt, GstObjectExt},
+    ClockTime, FlowError, FlowSuccess, ResourceError, State,
+};
+// Logging
+use log::*;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod frame_extractor;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+use frame_extractor::*;
+
+pub fn test_video_get(path: &str) {
+    pretty_env_logger::init();
+    initialize_gstreamer();
+    _ = create_video_frame_decoder_element(path).and_then(
+        |pipeline| -> Result<(), Box<dyn std::error::Error>> {
+            pipeline.set_state(State::Playing)?;
+
+            let bus = pipeline
+                .bus()
+                .expect("Pipeline without bus. Shouldn't happen!");
+
+            for msg in bus.iter_timed(ClockTime::NONE) {
+                use gstreamer::MessageView;
+                // info!("Message: {:#?}", msg);
+
+                match msg.view() {
+                    MessageView::Eos(..) => break,
+                    MessageView::Error(err) => {
+                        pipeline.set_state(State::Null)?;
+                        return Err(todo!());
+                    }
+                    MessageView::StateChanged(s) => {
+                        info!(
+                            "State Changed from {:#?}: {:#?} -> {:#?} ({:#?})",
+                            s.src().map(|s| s.path_string()),
+                            s.old(),
+                            s.current(),
+                            s.pending()
+                        );
+                    }
+                    _ => (),
+                }
+            }
+
+            pipeline.set_state(State::Null)?;
+
+            Ok(())
+        },
+    );
 }
