@@ -1,16 +1,22 @@
-use gstreamer::{element_error, element_warning, prelude::*, CoreError, LibraryError, Structure};
 // logging
 use log::*;
 
+use std::cell::RefCell;
 // std
 use std::env;
+use std::ops::Deref;
+use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 // gstreamer imports
 use gstreamer::{self as gst, Element, FlowError, FlowSuccess, Pipeline};
+use gstreamer::{element_error, element_warning, prelude::*, CoreError, LibraryError};
 use gstreamer::{Caps, ElementFactory};
 use gstreamer_app::{self, AppSink, AppSinkCallbacks};
 
-// Temp
+use crate::gpu::ComputeState;
+use crate::DiPsProperties;
+use crate::{FrameCallbackNotSpecifiedError, VideoPathNotSpecifiedError};
 
 pub fn initialize_gstreamer() {
     env::set_var("GST_DEBUG", "3");
@@ -33,17 +39,23 @@ pub fn initialize_gstreamer() {
     );
 }
 
-pub fn create_video_frame_decoder_element(
-    video_path: &str,
+pub fn create_video_frame_decoder_pipeline(
+    properties: &DiPsProperties,
 ) -> Result<Pipeline, Box<dyn std::error::Error>> {
-    // filesrc -> decodebin -> videoconvert -> appsink
-
     // Create a frame decoding pipeline
     let frame_decoding_pipeline = Pipeline::default();
+
     // Create source element
+    // If the video path is not specified then return an error
     let source = ElementFactory::make("filesrc")
         .name("Video Frame Decoder Source")
-        .property("location", video_path)
+        .property(
+            "location",
+            match properties.video_path.as_ref() {
+                Some(path) => path,
+                None => return Err(Box::new(VideoPathNotSpecifiedError)),
+            },
+        )
         .build()?;
 
     // Create a decodebin element
@@ -55,6 +67,11 @@ pub fn create_video_frame_decoder_element(
     Element::link_many([&source, &decodebin])?;
 
     let pipeline_weak = frame_decoding_pipeline.downgrade();
+
+    // GPU Compute
+    let compute = Arc::new(RwLock::new(
+        ComputeState::new().expect("Could not create Compute State"),
+    ));
 
     decodebin.connect_pad_added(move |dbin, src_pad| {
         let Some(pipeline) = pipeline_weak.upgrade() else {
@@ -95,17 +112,13 @@ pub fn create_video_frame_decoder_element(
                     .name("Video Frame Scale")
                     .build()?;
 
-                // let sink = ElementFactory::make("autovideosink").build()?;
-
-                // let sink = ElementFactory::make("appsink")
-                //     .name("Video Frame App Sink")
-                //     .property("emit-signals", &true)
-                //     .property("sync", &false)
-                //     .build()?
-                //     .dynamic_cast::<AppSink>();
-
                 let sink = AppSink::builder()
-                    .caps(&Caps::builder("video/x-raw").field("format", &"RGB").build())
+                    .caps(
+                        &Caps::builder("video/x-raw")
+                            .field("format", &"RGBA")
+                            .build(),
+                    )
+                    .sync(false) // This is done so the pipeline doesn't wait for the timestamps of each frame and runs through as quick as possible
                     .build();
 
                 let elements = &[&queue, &convert, &scale, sink.upcast_ref()];
@@ -118,11 +131,15 @@ pub fn create_video_frame_decoder_element(
 
                 let sink_pad = queue.static_pad("sink").expect("queue has no sinkpad");
                 src_pad.link(&sink_pad)?;
+                let compute_clone = compute.clone();
+
+                // FIXME: This should be in the callback but its not working for some reason
+                compute_clone.write().unwrap().add_initial_texture(640, 480);
 
                 // Create the callback for the app sink
                 sink.set_callbacks(
                     AppSinkCallbacks::builder()
-                        .new_sample(|appsink| {
+                        .new_sample(move |appsink| {
                             match appsink.pull_sample() {
                                 Ok(sample) => {
                                     let buffer = sample.buffer().expect("Failed to get buffer");
@@ -135,12 +152,71 @@ pub fn create_video_frame_decoder_element(
                                             let height = s.get("height").unwrap_or(0);
 
                                             let frame_data = map.as_slice();
+
                                             info!(
                                                 "width: {} height: {}, Data len: {}",
                                                 width,
                                                 height,
                                                 frame_data.len()
                                             );
+
+                                            // if !compute_clone
+                                            //     .read()
+                                            //     .expect("Could Not obtain read")
+                                            //     .has_initial_frame()
+                                            // {
+                                            //     compute_clone
+                                            //         .write()
+                                            //         .expect("Could Not obtain Write")
+                                            //         .add_initial_texture(width, height);
+                                            // }
+
+                                            compute_clone
+                                                .read()
+                                                .expect("Could Not Obtain Read")
+                                                .update_input_texture(frame_data);
+                                            compute_clone
+                                                .read()
+                                                .expect("Could Not obtain Read")
+                                                .dispatch();
+
+                                            // let mut max_r = frame_data[0];
+                                            // let mut max_g = frame_data[1];
+                                            // let mut max_b = frame_data[2];
+
+                                            // let mut r_sum: u64 = 0;
+                                            // let mut g_sum: u64 = 0;
+                                            // let mut b_sum: u64 = 0;
+
+                                            // for index in (0..frame_data.len()).step_by(4) {
+                                            //     let (r, g, b) = (
+                                            //         frame_data[index],
+                                            //         frame_data[index + 1],
+                                            //         frame_data[index + 2],
+                                            //     );
+
+                                            //     r_sum += r as u64;
+                                            //     g_sum += g as u64;
+                                            //     b_sum += b as u64;
+
+                                            //     max_r = max_r.max(r);
+                                            //     max_g = max_g.max(g);
+                                            //     max_b = max_b.max(b);
+                                            // }
+
+                                            // r_sum /= (frame_data.len() / 3) as u64;
+                                            // g_sum /= (frame_data.len() / 3) as u64;
+                                            // b_sum /= (frame_data.len() / 3) as u64;
+
+                                            // info!(
+                                            //     "Color Averages:\n    r: {}\n    g: {}\n    b:{}",
+                                            //     r_sum, g_sum, b_sum
+                                            // );
+
+                                            // info!(
+                                            //     "Max r: {} Max g: {} Max b: {}",
+                                            //     max_r, max_g, max_b
+                                            // );
                                         }
                                     }
 
