@@ -1,5 +1,10 @@
-use std::{error::Error, fmt::Display};
+use std::{
+    error::Error,
+    fmt::Display,
+    sync::{Arc, Mutex},
+};
 
+use gpu::ComputeState;
 use gstreamer::{
     prelude::{ElementExt, GstObjectExt},
     ClockTime, State,
@@ -12,9 +17,12 @@ mod gpu;
 
 use frame_extractor::*;
 
+// Type alias for the callback function
+type CallbackFunction = fn(u32, u32, &[u8], &mut ComputeState);
+
 pub struct DiPsProperties {
     video_path: Option<String>,
-    frame_callback: Option<fn(&[u8])>,
+    frame_callback: Option<Arc<Mutex<CallbackFunction>>>,
 }
 
 impl DiPsProperties {
@@ -36,8 +44,8 @@ impl DiPsProperties {
     }
 
     /// Sets the frame callback function using the builder structure
-    pub fn frame_callback(&mut self, frame_callback: fn(&[u8])) -> &mut Self {
-        self.frame_callback = Some(frame_callback);
+    pub fn frame_callback(&mut self, frame_callback: CallbackFunction) -> &mut Self {
+        self.frame_callback = Some(Arc::new(Mutex::new(frame_callback)));
 
         self
     }
@@ -45,7 +53,7 @@ impl DiPsProperties {
     pub fn build(&self) -> Self {
         Self {
             video_path: self.video_path.clone(),
-            frame_callback: self.frame_callback,
+            frame_callback: self.frame_callback.clone(),
         }
     }
 }
@@ -81,16 +89,52 @@ impl Display for FrameCallbackNotSpecifiedError {
     }
 }
 
+#[derive(Debug)]
+pub struct StreamNotFoundError;
+
+impl Error for StreamNotFoundError {
+    fn description(&self) -> &str {
+        "Video Stream not found"
+    }
+}
+
+impl Display for StreamNotFoundError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Video Stream not found")
+    }
+}
+
+#[derive(Debug)]
+pub struct StreamPipelineError;
+
+impl Error for StreamPipelineError {
+    fn description(&self) -> &str {
+        "Stream Pipeline error"
+    }
+}
+
+impl Display for StreamPipelineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Video Stream Error")
+    }
+}
+
+fn frame_callback(_width: u32, _height: u32, frame_data: &[u8], compute: &mut ComputeState) {
+    compute.update_input_texture(frame_data);
+    compute.dispatch();
+}
+
 pub fn test_video_get() {
     pretty_env_logger::init();
     initialize_gstreamer();
 
     let props = DiPsProperties::new()
         .video_path("test_files/diffraction.avi")
+        .frame_callback(frame_callback)
         .build();
 
     _ = create_video_frame_decoder_pipeline(&props).and_then(
-        |pipeline| -> Result<(), Box<dyn std::error::Error>> {
+        |(pipeline, compute_state)| -> Result<(), Box<dyn std::error::Error>> {
             pipeline.set_state(State::Playing)?;
 
             let bus = pipeline
@@ -102,9 +146,9 @@ pub fn test_video_get() {
 
                 match msg.view() {
                     MessageView::Eos(..) => break,
-                    MessageView::Error(err) => {
+                    MessageView::Error(_err) => {
                         pipeline.set_state(State::Null)?;
-                        return Err(todo!());
+                        return Err(Box::new(StreamPipelineError));
                     }
                     MessageView::StateChanged(s) => {
                         info!(
@@ -120,6 +164,11 @@ pub fn test_video_get() {
             }
 
             pipeline.set_state(State::Null)?;
+
+            compute_state
+                .write()
+                .expect("Could Not obtain write")
+                .save_output();
 
             Ok(())
         },

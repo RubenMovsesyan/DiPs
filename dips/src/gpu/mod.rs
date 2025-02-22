@@ -1,4 +1,4 @@
-use log::*;
+// use log::*;
 use pollster::*;
 use wgpu::{
     include_wgsl, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource,
@@ -22,6 +22,8 @@ pub struct ComputeState {
 
     output_texture: Option<Texture>,
     output_buffer: Option<Buffer>,
+
+    pixels: Vec<u8>,
 }
 
 impl ComputeState {
@@ -64,6 +66,7 @@ impl ComputeState {
             input_texture_dimensions: None,
             output_texture: None,
             output_buffer: None,
+            pixels: Vec::new(),
         })
     }
 
@@ -152,7 +155,7 @@ impl ComputeState {
         );
     }
 
-    pub fn dispatch(&self) {
+    pub fn dispatch(&mut self) {
         let mut encoder = self
             .device
             .create_command_encoder(&CommandEncoderDescriptor {
@@ -211,32 +214,44 @@ impl ComputeState {
 
         let padded_data = buffer_slice.get_mapped_range();
 
-        let mut pixels: Vec<u8> = vec![
+        self.pixels = vec![
             0;
             (unpadded_bytes_per_row * self.input_texture_dimensions.as_ref().unwrap().height)
                 as usize
         ];
 
-        for (padded, pixels) in padded_data
-            .chunks_exact(padded_bytes_per_row)
-            .zip(pixels.chunks_exact_mut(unpadded_bytes_per_row as usize))
-        {
+        for (padded, pixels) in padded_data.chunks_exact(padded_bytes_per_row).zip(
+            self.pixels
+                .chunks_exact_mut(unpadded_bytes_per_row as usize),
+        ) {
             pixels.copy_from_slice(&padded[..unpadded_bytes_per_row as usize]);
         }
 
+        // if let Some(output_image) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(
+        //     self.input_texture_dimensions.as_ref().unwrap().width,
+        //     self.input_texture_dimensions.as_ref().unwrap().height,
+        //     &pixels[..],
+        // ) {
+        //     output_image
+        //         .save("test_files/output.png")
+        //         .expect("Failed to save image");
+        // }
+
+        drop(padded_data);
+
+        self.output_buffer.as_ref().unwrap().unmap();
+    }
+
+    pub fn save_output(&self) {
         if let Some(output_image) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(
             self.input_texture_dimensions.as_ref().unwrap().width,
             self.input_texture_dimensions.as_ref().unwrap().height,
-            &pixels[..],
+            &self.pixels[..],
         ) {
             output_image
                 .save("test_files/output.png")
                 .expect("Failed to save image");
         }
-
-        drop(padded_data);
-
-        self.output_buffer.as_ref().unwrap().unmap();
     }
 }
 

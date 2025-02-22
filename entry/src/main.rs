@@ -1,6 +1,4 @@
 use dips::*;
-use std::env;
-use std::path::Path;
 
 fn main() {
     // let input_file = env::args().nth(1).expect("Cannot Open File");
