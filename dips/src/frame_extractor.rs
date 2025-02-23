@@ -6,13 +6,13 @@ use std::env;
 use std::sync::{Arc, RwLock};
 
 // gstreamer imports
-use gstreamer::{self as gst, Element, FlowError, FlowSuccess, Pipeline};
+use gstreamer::{self as gst, ClockTime, Element, FlowError, FlowSuccess, Pipeline, State};
 use gstreamer::{element_error, element_warning, prelude::*, CoreError, LibraryError};
 use gstreamer::{Caps, ElementFactory};
 use gstreamer_app::{self, AppSink, AppSinkCallbacks};
 
 use crate::gpu::ComputeState;
-use crate::DiPsProperties;
+use crate::{DiPsProperties, StreamPipelineError};
 use crate::{FrameCallbackNotSpecifiedError, VideoPathNotSpecifiedError};
 
 pub fn initialize_gstreamer() {
@@ -178,10 +178,10 @@ pub fn create_video_frame_decoder_pipeline(
                                     );
 
                                     if let Ok(mut compute) = compute_clone.write() {
-                                        if !compute.has_initial_frame() {
-                                            compute
-                                                .add_initial_texture(width as u32, height as u32);
-                                        }
+                                        // if !compute.has_initial_frame() {
+                                        //     compute
+                                        //         .add_initial_texture(width as u32, height as u32);
+                                        // }
 
                                         // Here is where the callback is called for each frame
                                         if let Ok(callback) = frame_callback_clone.lock() {
@@ -212,4 +212,46 @@ pub fn create_video_frame_decoder_pipeline(
     });
 
     Ok((frame_decoding_pipeline, compute.clone()))
+}
+
+pub fn run_pipeline(
+    pipeline: Pipeline,
+    compute: Arc<RwLock<ComputeState>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    pipeline.set_state(State::Playing)?;
+
+    let bus = pipeline
+        .bus()
+        .expect("Pipeline without bus. Shouldn't happen!");
+
+    for msg in bus.iter_timed(ClockTime::NONE) {
+        use gstreamer::MessageView;
+
+        match msg.view() {
+            MessageView::Eos(..) => break,
+            MessageView::Error(_err) => {
+                pipeline.set_state(State::Null)?;
+                return Err(Box::new(StreamPipelineError));
+            }
+            MessageView::StateChanged(s) => {
+                info!(
+                    "State Changed from {:#?}: {:#?} -> {:#?} ({:#?})",
+                    s.src().map(|s| s.path_string()),
+                    s.old(),
+                    s.current(),
+                    s.pending()
+                );
+            }
+            _ => (),
+        }
+    }
+
+    pipeline.set_state(State::Null)?;
+
+    compute
+        .write()
+        .expect("Could Not obtain write")
+        .save_output();
+
+    Ok(())
 }

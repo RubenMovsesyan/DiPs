@@ -119,7 +119,11 @@ impl Display for StreamPipelineError {
     }
 }
 
-fn frame_callback(_width: u32, _height: u32, frame_data: &[u8], compute: &mut ComputeState) {
+fn frame_callback(width: u32, height: u32, frame_data: &[u8], compute: &mut ComputeState) {
+    if !compute.has_initial_frame() {
+        compute.add_initial_texture(width, height, frame_data);
+    }
+
     compute.update_input_texture(frame_data);
     compute.dispatch();
 }
@@ -129,48 +133,10 @@ pub fn test_video_get() {
     initialize_gstreamer();
 
     let props = DiPsProperties::new()
-        .video_path("test_files/diffraction.avi")
+        .video_path("test_files/diffraction_short.avi")
         .frame_callback(frame_callback)
         .build();
 
-    _ = create_video_frame_decoder_pipeline(&props).and_then(
-        |(pipeline, compute_state)| -> Result<(), Box<dyn std::error::Error>> {
-            pipeline.set_state(State::Playing)?;
-
-            let bus = pipeline
-                .bus()
-                .expect("Pipeline without bus. Shouldn't happen!");
-
-            for msg in bus.iter_timed(ClockTime::NONE) {
-                use gstreamer::MessageView;
-
-                match msg.view() {
-                    MessageView::Eos(..) => break,
-                    MessageView::Error(_err) => {
-                        pipeline.set_state(State::Null)?;
-                        return Err(Box::new(StreamPipelineError));
-                    }
-                    MessageView::StateChanged(s) => {
-                        info!(
-                            "State Changed from {:#?}: {:#?} -> {:#?} ({:#?})",
-                            s.src().map(|s| s.path_string()),
-                            s.old(),
-                            s.current(),
-                            s.pending()
-                        );
-                    }
-                    _ => (),
-                }
-            }
-
-            pipeline.set_state(State::Null)?;
-
-            compute_state
-                .write()
-                .expect("Could Not obtain write")
-                .save_output();
-
-            Ok(())
-        },
-    );
+    _ = create_video_frame_decoder_pipeline(&props)
+        .and_then(|(pipeline, compute_state)| run_pipeline(pipeline, compute_state));
 }

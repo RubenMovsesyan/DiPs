@@ -16,9 +16,11 @@ pub struct ComputeState {
 
     compute_pipeline: ComputePipeline,
     texture_bind_group: Option<BindGroup>,
+    texture_dimensions: Option<Extent3d>,
+
+    start_texture: Option<Texture>,
 
     input_texture: Option<Texture>,
-    input_texture_dimensions: Option<Extent3d>,
 
     output_texture: Option<Texture>,
     output_buffer: Option<Buffer>,
@@ -63,7 +65,8 @@ impl ComputeState {
             compute_pipeline,
             texture_bind_group: None,
             input_texture: None,
-            input_texture_dimensions: None,
+            start_texture: None,
+            texture_dimensions: None,
             output_texture: None,
             output_buffer: None,
             pixels: Vec::new(),
@@ -77,12 +80,35 @@ impl ComputeState {
         }
     }
 
-    pub fn add_initial_texture(&mut self, width: u32, height: u32) {
+    pub fn add_initial_texture(&mut self, width: u32, height: u32, frame_data: &[u8]) {
         let texture_size = Extent3d {
             width,
             height,
             depth_or_array_layers: 1,
         };
+
+        let start_texture = self.device.create_texture(&TextureDescriptor {
+            label: Some("Start Texture"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba8Unorm,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        // Write the inital frame to the gpu
+        self.queue.write_texture(
+            start_texture.as_image_copy(),
+            frame_data,
+            TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
+            texture_size,
+        );
 
         let input_texture = self.device.create_texture(&TextureDescriptor {
             label: Some("input texture"),
@@ -123,11 +149,17 @@ impl ComputeState {
                 BindGroupEntry {
                     binding: 0,
                     resource: BindingResource::TextureView(
-                        &input_texture.create_view(&TextureViewDescriptor::default()),
+                        &start_texture.create_view(&TextureViewDescriptor::default()),
                     ),
                 },
                 BindGroupEntry {
                     binding: 1,
+                    resource: BindingResource::TextureView(
+                        &input_texture.create_view(&TextureViewDescriptor::default()),
+                    ),
+                },
+                BindGroupEntry {
+                    binding: 2,
                     resource: BindingResource::TextureView(
                         &output_texture.create_view(&TextureViewDescriptor::default()),
                     ),
@@ -135,7 +167,8 @@ impl ComputeState {
             ],
         });
 
-        self.input_texture_dimensions = Some(texture_size);
+        self.texture_dimensions = Some(texture_size);
+        self.start_texture = Some(start_texture);
         self.input_texture = Some(input_texture);
         self.output_texture = Some(output_texture);
         self.texture_bind_group = Some(texture_bind_group);
@@ -148,10 +181,10 @@ impl ComputeState {
             texture,
             TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(self.input_texture_dimensions.unwrap().width * 4),
-                rows_per_image: Some(self.input_texture_dimensions.unwrap().height),
+                bytes_per_row: Some(self.texture_dimensions.unwrap().width * 4),
+                rows_per_image: Some(self.texture_dimensions.unwrap().height),
             },
-            self.input_texture_dimensions.unwrap(),
+            self.texture_dimensions.unwrap(),
         );
     }
 
@@ -165,8 +198,8 @@ impl ComputeState {
         {
             let (dispatch_width, dispatch_height) = compute_work_group_count(
                 (
-                    self.input_texture_dimensions.as_ref().unwrap().width,
-                    self.input_texture_dimensions.as_ref().unwrap().height,
+                    self.texture_dimensions.as_ref().unwrap().width,
+                    self.texture_dimensions.as_ref().unwrap().height,
                 ),
                 (16, 16),
             );
@@ -182,8 +215,8 @@ impl ComputeState {
         }
 
         let padded_bytes_per_row =
-            padded_bytes_per_row(self.input_texture_dimensions.as_ref().unwrap().width);
-        let unpadded_bytes_per_row = self.input_texture_dimensions.as_ref().unwrap().width * 4;
+            padded_bytes_per_row(self.texture_dimensions.as_ref().unwrap().width);
+        let unpadded_bytes_per_row = self.texture_dimensions.as_ref().unwrap().width * 4;
 
         encoder.copy_texture_to_buffer(
             TexelCopyTextureInfo {
@@ -197,12 +230,10 @@ impl ComputeState {
                 layout: TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(padded_bytes_per_row as u32),
-                    rows_per_image: Some(
-                        self.input_texture_dimensions.as_ref().unwrap().height as u32,
-                    ),
+                    rows_per_image: Some(self.texture_dimensions.as_ref().unwrap().height as u32),
                 },
             },
-            self.input_texture_dimensions.unwrap(),
+            self.texture_dimensions.unwrap(),
         );
 
         self.queue.submit(Some(encoder.finish()));
@@ -216,7 +247,7 @@ impl ComputeState {
 
         self.pixels = vec![
             0;
-            (unpadded_bytes_per_row * self.input_texture_dimensions.as_ref().unwrap().height)
+            (unpadded_bytes_per_row * self.texture_dimensions.as_ref().unwrap().height)
                 as usize
         ];
 
@@ -244,8 +275,8 @@ impl ComputeState {
 
     pub fn save_output(&self) {
         if let Some(output_image) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(
-            self.input_texture_dimensions.as_ref().unwrap().width,
-            self.input_texture_dimensions.as_ref().unwrap().height,
+            self.texture_dimensions.as_ref().unwrap().width,
+            self.texture_dimensions.as_ref().unwrap().height,
             &self.pixels[..],
         ) {
             output_image
