@@ -6,7 +6,9 @@ use std::env;
 use std::sync::{Arc, Mutex, RwLock};
 
 // gstreamer imports
-use gstreamer::{self as gst, Buffer, ClockTime, Element, FlowError, FlowSuccess, Pipeline, State};
+use gstreamer::{
+    self as gst, Buffer, ClockTime, Element, FlowError, FlowSuccess, Format, Pipeline, State,
+};
 use gstreamer::{element_error, element_warning, prelude::*, CoreError, LibraryError};
 use gstreamer::{Caps, ElementFactory};
 use gstreamer_app::{self, AppSink, AppSinkCallbacks, AppSrc};
@@ -136,9 +138,7 @@ pub fn create_video_frame_decoder_pipeline(
                     .build();
 
                 // Source to send data from app back into the pipeline
-                let src = AppSrc::builder()
-                    // .format(Format::Time)
-                    .build();
+                let src = AppSrc::builder().format(Format::Time).build();
 
                 // Convert to raw video format
                 let videoconvert = ElementFactory::make("videoconvert")
@@ -214,7 +214,8 @@ pub fn create_video_frame_decoder_pipeline(
                                     let map = buffer.map_readable().expect("Failed to map buffer");
 
                                     let frame_data = map.as_slice();
-                                    // let pts = buffer.pts();
+                                    let pts = buffer.pts();
+                                    let duration = buffer.duration();
 
                                     // info!(
                                     //     "width: {:#?} height: {:#?}, Data len: {}",
@@ -222,6 +223,7 @@ pub fn create_video_frame_decoder_pipeline(
                                     //     height,
                                     //     frame_data.len()
                                     // );
+                                    info!("pts: {:#?}\nduration: {:#?}", pts, duration);
 
                                     if let Ok(mut compute) = compute_clone.write() {
                                         // Here is where the callback is called for each frame
@@ -233,19 +235,16 @@ pub fn create_video_frame_decoder_pipeline(
                                                 &mut compute,
                                             );
 
-                                            let new_buffer = Buffer::from_slice(callback_data);
-                                            // new_buffer.make_mut().set_pts(pts);
+                                            let mut new_buffer = Buffer::from_slice(callback_data);
+                                            // Set the PTS and duration of the new buffer
+                                            // INFO: This might not be needed
+                                            new_buffer.make_mut().set_pts(pts);
+                                            new_buffer.make_mut().set_duration(duration);
 
                                             if let Ok(appsrc) = app_src_clone.lock() {
-                                                // Pushing sample for the caps
-                                                match appsrc.push_sample(&sample) {
-                                                    Ok(_) => {
-                                                        info!("Successfully pushed sample");
-                                                    }
-                                                    Err(err) => {
-                                                        error!("Error Pushing sample: {:#?}", err);
-                                                        return Err(FlowError::Error);
-                                                    }
+                                                // Set the caps of the appsrc to the same as the sample
+                                                if let Some(caps) = sample.caps() {
+                                                    appsrc.set_caps(Some(&caps.copy()));
                                                 }
 
                                                 match appsrc.push_buffer(new_buffer) {
