@@ -5,12 +5,8 @@ use std::{
 };
 
 use gpu::ComputeState;
-use gstreamer::{
-    prelude::{ElementExt, GstObjectExt},
-    ClockTime, State,
-};
 // Logging
-use log::*;
+// use log::*;
 
 mod frame_extractor;
 mod gpu;
@@ -18,7 +14,7 @@ mod gpu;
 use frame_extractor::*;
 
 // Type alias for the callback function
-type CallbackFunction = fn(u32, u32, &[u8], &mut ComputeState);
+type CallbackFunction = fn(u32, u32, &[u8], &mut ComputeState) -> Vec<u8>;
 
 pub struct DiPsProperties {
     video_path: Option<String>,
@@ -119,13 +115,20 @@ impl Display for StreamPipelineError {
     }
 }
 
-fn frame_callback(width: u32, height: u32, frame_data: &[u8], compute: &mut ComputeState) {
+fn frame_callback(
+    width: u32,
+    height: u32,
+    frame_data: &[u8],
+    compute: &mut ComputeState,
+) -> Vec<u8> {
     if !compute.has_initial_frame() {
         compute.add_initial_texture(width, height, frame_data);
     }
 
     compute.update_input_texture(frame_data);
     compute.dispatch();
+
+    compute.get_pixels()
 }
 
 pub fn test_video_get() {

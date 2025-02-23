@@ -258,19 +258,13 @@ impl ComputeState {
             pixels.copy_from_slice(&padded[..unpadded_bytes_per_row as usize]);
         }
 
-        // if let Some(output_image) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(
-        //     self.input_texture_dimensions.as_ref().unwrap().width,
-        //     self.input_texture_dimensions.as_ref().unwrap().height,
-        //     &pixels[..],
-        // ) {
-        //     output_image
-        //         .save("test_files/output.png")
-        //         .expect("Failed to save image");
-        // }
-
         drop(padded_data);
 
         self.output_buffer.as_ref().unwrap().unmap();
+    }
+
+    pub fn get_pixels(&self) -> Vec<u8> {
+        self.pixels.clone()
     }
 
     pub fn save_output(&self) {

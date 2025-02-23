@@ -3,13 +3,13 @@ use log::*;
 
 // std
 use std::env;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 // gstreamer imports
-use gstreamer::{self as gst, ClockTime, Element, FlowError, FlowSuccess, Pipeline, State};
+use gstreamer::{self as gst, Buffer, ClockTime, Element, FlowError, FlowSuccess, Pipeline, State};
 use gstreamer::{element_error, element_warning, prelude::*, CoreError, LibraryError};
 use gstreamer::{Caps, ElementFactory};
-use gstreamer_app::{self, AppSink, AppSinkCallbacks};
+use gstreamer_app::{self, AppSink, AppSinkCallbacks, AppSrc};
 
 use crate::gpu::ComputeState;
 use crate::{DiPsProperties, StreamPipelineError};
@@ -125,6 +125,7 @@ pub fn create_video_frame_decoder_pipeline(
                     .name("Video Frame Scale")
                     .build()?;
 
+                // Sink to send frame data to app
                 let sink = AppSink::builder()
                     .caps(
                         &Caps::builder("video/x-raw")
@@ -134,9 +135,42 @@ pub fn create_video_frame_decoder_pipeline(
                     .sync(false) // This is done so the pipeline doesn't wait for the timestamps of each frame and runs through as quick as possible
                     .build();
 
-                let elements = &[&queue, &convert, &scale, sink.upcast_ref()];
+                // Source to send data from app back into the pipeline
+                let src = AppSrc::builder()
+                    // .format(Format::Time)
+                    .build();
+
+                // Convert to raw video format
+                let videoconvert = ElementFactory::make("videoconvert")
+                    .name("Video Frame to raw format")
+                    .build()?;
+
+                // Mux raw frames into AVI container
+                let muxer = ElementFactory::make("avimux")
+                    .name("Video Frame AviMuxer")
+                    .build()?;
+
+                // filesink to write the video
+                let filesink = ElementFactory::make("filesink")
+                    .name("Video Frame output file")
+                    .property("location", "test_files/output_diff.avi") // HACK: fix this to be in props
+                    .build()?;
+
+                // Pipeline description
+                let elements = &[
+                    &queue,
+                    &convert,
+                    &scale,
+                    sink.upcast_ref(),
+                    src.upcast_ref(),
+                    &videoconvert,
+                    &muxer,
+                    &filesink,
+                ];
                 pipeline.add_many(elements)?;
-                Element::link_many(elements)?;
+
+                Element::link_many(&[&queue, &convert, &scale, sink.upcast_ref()])?;
+                Element::link_many(&[src.upcast_ref(), &videoconvert, &muxer, &filesink])?;
 
                 for e in elements {
                     e.sync_state_with_parent()?
@@ -145,9 +179,20 @@ pub fn create_video_frame_decoder_pipeline(
                 let sink_pad = queue.static_pad("sink").expect("queue has no sinkpad");
                 src_pad.link(&sink_pad)?;
 
+                // Shared appsrc for appsink samples to use
+                let app_src_shared = Arc::new(Mutex::new(src));
+                let app_src_clone = app_src_shared.clone();
+                let eos_app_src_clone = app_src_shared.clone();
+
                 // Create the callback for the app sink
                 sink.set_callbacks(
                     AppSinkCallbacks::builder()
+                        // This is needed to pass on the eos signal from the filesrc
+                        .eos(move |_appsink| {
+                            if let Ok(appsrc) = eos_app_src_clone.lock() {
+                                appsrc.end_of_stream().expect("Faile to send EOS");
+                            }
+                        })
                         .new_sample(move |appsink| {
                             match appsink.pull_sample() {
                                 Ok(sample) => {
@@ -169,34 +214,61 @@ pub fn create_video_frame_decoder_pipeline(
                                     let map = buffer.map_readable().expect("Failed to map buffer");
 
                                     let frame_data = map.as_slice();
+                                    // let pts = buffer.pts();
 
-                                    info!(
-                                        "width: {:#?} height: {:#?}, Data len: {}",
-                                        width,
-                                        height,
-                                        frame_data.len()
-                                    );
+                                    // info!(
+                                    //     "width: {:#?} height: {:#?}, Data len: {}",
+                                    //     width,
+                                    //     height,
+                                    //     frame_data.len()
+                                    // );
 
                                     if let Ok(mut compute) = compute_clone.write() {
-                                        // if !compute.has_initial_frame() {
-                                        //     compute
-                                        //         .add_initial_texture(width as u32, height as u32);
-                                        // }
-
                                         // Here is where the callback is called for each frame
                                         if let Ok(callback) = frame_callback_clone.lock() {
-                                            callback(
+                                            let callback_data = callback(
                                                 width as u32,
                                                 height as u32,
                                                 frame_data,
                                                 &mut compute,
                                             );
+
+                                            let new_buffer = Buffer::from_slice(callback_data);
+                                            // new_buffer.make_mut().set_pts(pts);
+
+                                            if let Ok(appsrc) = app_src_clone.lock() {
+                                                // Pushing sample for the caps
+                                                match appsrc.push_sample(&sample) {
+                                                    Ok(_) => {
+                                                        info!("Successfully pushed sample");
+                                                    }
+                                                    Err(err) => {
+                                                        error!("Error Pushing sample: {:#?}", err);
+                                                        return Err(FlowError::Error);
+                                                    }
+                                                }
+
+                                                match appsrc.push_buffer(new_buffer) {
+                                                    Ok(_) => {
+                                                        info!("Successfully pushed to appsrc")
+                                                    }
+                                                    Err(err) => {
+                                                        error!("Error Pushing buffer: {:#?}", err);
+                                                        return Err(FlowError::Error);
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
 
                                     Ok(FlowSuccess::Ok)
                                 }
-                                Err(_) => Err(FlowError::Eos),
+                                Err(_) => {
+                                    if let Ok(appsrc) = app_src_clone.lock() {
+                                        appsrc.end_of_stream().expect("Faile to send EOS");
+                                    }
+                                    Err(FlowError::Eos)
+                                }
                             }
                         })
                         .build(),
