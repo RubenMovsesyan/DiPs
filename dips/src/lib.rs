@@ -121,14 +121,23 @@ fn frame_callback(
     frame_data: &[u8],
     compute: &mut ComputeState,
 ) -> Vec<u8> {
-    if !compute.has_initial_frame() {
-        compute.add_initial_texture(width, height, frame_data);
+    // if !compute.has_initial_frame() {
+    //     compute.add_initial_texture(width, height, frame_data);
+    // }
+
+    // compute.update_input_texture(frame_data);
+    // compute.dispatch();
+
+    // compute.get_pixels()
+
+    compute.add_texture(width, height, frame_data);
+
+    if compute.can_dispatch() {
+        compute.dispatch();
+        compute.get_pixels()
+    } else {
+        frame_data.to_vec()
     }
-
-    compute.update_input_texture(frame_data);
-    compute.dispatch();
-
-    compute.get_pixels()
 }
 
 pub fn test_video_get() {
@@ -136,7 +145,7 @@ pub fn test_video_get() {
     initialize_gstreamer();
 
     let props = DiPsProperties::new()
-        .video_path("test_files/diffraction_short.avi")
+        .video_path("test_files/diffraction_short_new.avi")
         .frame_callback(frame_callback)
         .build();
 

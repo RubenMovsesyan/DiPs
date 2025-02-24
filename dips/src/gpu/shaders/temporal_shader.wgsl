@@ -22,7 +22,7 @@ var temporal_texture_5: texture_storage_2d<rgba8unorm, read>;
 var output_texture: texture_storage_2d<rgba8unorm, write>;
 
 
-// const L = arrayLength(temporal_textures);
+const SENSITIVITY: f32 = 100.0;
 
 // helper funcitons
 fn get_intensity(color: vec4<f32>) -> f32 {
@@ -82,5 +82,9 @@ fn compute_main(
         }
     }
 
-    textureStore(output_texture, coords.xy, vec4<f32>(median_array[2].rgb, 1.0));
+    let original_intensity = get_intensity(textureLoad(start_texture, coords.xy));
+    let diff = (original_intensity - get_intensity(median_array[2])) * SENSITIVITY;
+
+    // textureStore(output_texture, coords.xy, vec4<f32>(median_array[2].rgb, 1.0));
+    textureStore(output_texture, coords.xy, vec4<f32>(diff, diff, diff, 1.0));
 }
