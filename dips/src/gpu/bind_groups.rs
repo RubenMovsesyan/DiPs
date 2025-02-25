@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use log::*;
+// use log::*;
 
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
@@ -125,7 +125,6 @@ impl BindGroupsContainer {
         device: &Device,
         queue: &Queue,
     ) {
-        warn!("Initial textures len: {}", textures.len());
         let texture_size = Extent3d {
             width,
             height,

@@ -40,13 +40,19 @@ pub fn initialize_gstreamer() {
 
 pub fn create_video_frame_decoder_pipeline(
     properties: &DiPsProperties,
-) -> Result<(Pipeline, Arc<RwLock<ComputeState>>), Box<dyn std::error::Error>> {
+) -> Result<Pipeline, Box<dyn std::error::Error>> {
     // Extracts the video path
     // If the video path is not specified then return an error
-    let video_path = match properties.video_path.as_ref() {
+    let video_path = match properties.get_video_path() {
         Some(path) => path,
         None => return Err(Box::new(VideoPathNotSpecifiedError)),
     };
+
+    let output_path = match properties.get_output_path() {
+        Some(path) => path,
+        None => return Err(Box::new(VideoPathNotSpecifiedError)),
+    }
+    .clone();
 
     // -------------------- Build the Pipeline --------------------------
 
@@ -153,7 +159,7 @@ pub fn create_video_frame_decoder_pipeline(
                 // filesink to write the video
                 let filesink = ElementFactory::make("filesink")
                     .name("Video Frame output file")
-                    .property("location", "test_files/output_diff.avi") // HACK: fix this to be in props
+                    .property("location", output_path.clone()) // HACK: fix this to be in props
                     .build()?;
 
                 // Pipeline description
@@ -217,12 +223,6 @@ pub fn create_video_frame_decoder_pipeline(
                                     let pts = buffer.pts();
                                     let duration = buffer.duration();
 
-                                    // info!(
-                                    //     "width: {:#?} height: {:#?}, Data len: {}",
-                                    //     width,
-                                    //     height,
-                                    //     frame_data.len()
-                                    // );
                                     info!("pts: {:#?}\nduration: {:#?}", pts, duration);
 
                                     if let Ok(mut compute) = compute_clone.write() {
@@ -264,7 +264,7 @@ pub fn create_video_frame_decoder_pipeline(
                                 }
                                 Err(_) => {
                                     if let Ok(appsrc) = app_src_clone.lock() {
-                                        appsrc.end_of_stream().expect("Faile to send EOS");
+                                        appsrc.end_of_stream().expect("Failed to send EOS");
                                     }
                                     Err(FlowError::Eos)
                                 }
@@ -282,12 +282,12 @@ pub fn create_video_frame_decoder_pipeline(
         }
     });
 
-    Ok((frame_decoding_pipeline, compute.clone()))
+    Ok(frame_decoding_pipeline)
 }
 
 pub fn run_pipeline(
     pipeline: Pipeline,
-    compute: Arc<RwLock<ComputeState>>,
+    // compute: Arc<RwLock<ComputeState>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     pipeline.set_state(State::Playing)?;
 
@@ -319,10 +319,10 @@ pub fn run_pipeline(
 
     pipeline.set_state(State::Null)?;
 
-    compute
-        .write()
-        .expect("Could Not obtain write")
-        .save_output();
+    // compute
+    //     .write()
+    //     .expect("Could Not obtain write")
+    //     .save_output();
 
     Ok(())
 }

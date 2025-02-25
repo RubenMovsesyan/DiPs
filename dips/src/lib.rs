@@ -19,6 +19,7 @@ type CallbackFunction = fn(u32, u32, &[u8], &mut ComputeState) -> Vec<u8>;
 pub struct DiPsProperties {
     video_path: Option<String>,
     frame_callback: Option<Arc<Mutex<CallbackFunction>>>,
+    output_path: Option<String>,
 }
 
 impl DiPsProperties {
@@ -26,6 +27,7 @@ impl DiPsProperties {
         Self {
             video_path: None,
             frame_callback: None,
+            output_path: None,
         }
     }
 
@@ -46,10 +48,29 @@ impl DiPsProperties {
         self
     }
 
+    /// Sets the output path using the builder structure
+    pub fn output_path<S>(&mut self, output_path: S) -> &mut Self
+    where
+        S: AsRef<str>,
+    {
+        self.output_path = Some(String::from(output_path.as_ref()));
+
+        self
+    }
+
+    pub fn get_video_path(&self) -> Option<&String> {
+        self.video_path.as_ref()
+    }
+
+    pub fn get_output_path(&self) -> Option<&String> {
+        self.output_path.as_ref()
+    }
+
     pub fn build(&self) -> Self {
         Self {
             video_path: self.video_path.clone(),
             frame_callback: self.frame_callback.clone(),
+            output_path: self.output_path.clone(),
         }
     }
 }
@@ -121,15 +142,6 @@ fn frame_callback(
     frame_data: &[u8],
     compute: &mut ComputeState,
 ) -> Vec<u8> {
-    // if !compute.has_initial_frame() {
-    //     compute.add_initial_texture(width, height, frame_data);
-    // }
-
-    // compute.update_input_texture(frame_data);
-    // compute.dispatch();
-
-    // compute.get_pixels()
-
     compute.add_texture(width, height, frame_data);
 
     if compute.can_dispatch() {
@@ -140,15 +152,26 @@ fn frame_callback(
     }
 }
 
-pub fn test_video_get() {
+// pub fn test_video_get() {
+//     pretty_env_logger::init();
+//     initialize_gstreamer();
+
+//     let props = DiPsProperties::new()
+//         .video_path("test_files/diffraction_short_new.avi")
+//         .frame_callback(frame_callback)
+//         .build();
+
+//     _ = create_video_frame_decoder_pipeline(&props)
+//         .and_then(|(pipeline, compute_state)| run_pipeline(pipeline, compute_state));
+// }
+
+pub fn init() {
     pretty_env_logger::init();
     initialize_gstreamer();
+}
 
-    let props = DiPsProperties::new()
-        .video_path("test_files/diffraction_short_new.avi")
-        .frame_callback(frame_callback)
-        .build();
+pub fn perform_dips(properties: &mut DiPsProperties) {
+    properties.frame_callback(frame_callback);
 
-    _ = create_video_frame_decoder_pipeline(&props)
-        .and_then(|(pipeline, compute_state)| run_pipeline(pipeline, compute_state));
+    _ = create_video_frame_decoder_pipeline(properties).and_then(|pipeline| run_pipeline(pipeline));
 }
