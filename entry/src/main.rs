@@ -1,14 +1,15 @@
 use dips::{self, DiPsProperties};
 
 fn main() {
-    // let input_file = env::args().nth(1).expect("Cannot Open File");
+    pretty_env_logger::init();
+    dips::init_thumbnail_extractor();
 
-    // if !Path::new(&input_file).exists() {
-    //     panic!("File path doesn't exist");
-    // }
+    dips::extract_thumbnail(
+        "test_files/diffraction_short_new.avi",
+        "test_files/output.jpeg",
+    );
 
-    // test_video_get();
-    dips::init();
+    dips::init_frame_extractor();
 
     let mut dips_properties = DiPsProperties::new()
         .video_path("test_files/diffraction_short_new.avi")

@@ -91,8 +91,33 @@ button {
   outline: none;
 }
 
-#greet-input {
-  margin-right: 5px;
+img {
+  border-radius: 10px;
+  box-shadow:
+  3.6px 2.9px 1.9px rgba(0, 0, 0, 0.017),
+  8px 6.3px 4.3px rgba(0, 0, 0, 0.024),
+  11.6px 9.1px 7.7px rgba(0, 0, 0, 0.03),
+  13.2px 10.4px 12.8px rgba(0, 0, 0, 0.035),
+  13.9px 10.9px 21.2px rgba(0, 0, 0, 0.041),
+  14px 11px 37px rgba(0, 0, 0, 0.05),
+  14px 11px 80px rgba(0, 0, 0, 0.07);
+}
+
+#video-container {
+  height: 90vh;
+}
+
+#thumbnail {
+  display: block;
+  height: 90%;
+  margin-left: auto;
+  margin-right:auto;
+}
+
+#buttons-container {
+  display: grid;
+  column-gap: 100px;
+  grid-template-columns: auto auto;
 }
 
 @media (prefers-color-scheme: dark) {

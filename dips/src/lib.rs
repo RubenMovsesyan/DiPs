@@ -10,8 +10,12 @@ use gpu::ComputeState;
 
 mod frame_extractor;
 mod gpu;
+mod thumbnail_extractor;
 
 use frame_extractor::*;
+use thumbnail_extractor::{
+    extract_thumbnail_pipeline, initialize_thumbnail_extractor, run_thumbnail_pipeline,
+};
 
 // Type alias for the callback function
 type CallbackFunction = fn(u32, u32, &[u8], &mut ComputeState) -> Vec<u8>;
@@ -152,26 +156,21 @@ fn frame_callback(
     }
 }
 
-// pub fn test_video_get() {
-//     pretty_env_logger::init();
-//     initialize_gstreamer();
-
-//     let props = DiPsProperties::new()
-//         .video_path("test_files/diffraction_short_new.avi")
-//         .frame_callback(frame_callback)
-//         .build();
-
-//     _ = create_video_frame_decoder_pipeline(&props)
-//         .and_then(|(pipeline, compute_state)| run_pipeline(pipeline, compute_state));
-// }
-
-pub fn init() {
-    pretty_env_logger::init();
-    initialize_gstreamer();
+pub fn init_frame_extractor() {
+    initialize_frame_extractor();
 }
 
 pub fn perform_dips(properties: &mut DiPsProperties) {
     properties.frame_callback(frame_callback);
 
     _ = create_video_frame_decoder_pipeline(properties).and_then(|pipeline| run_pipeline(pipeline));
+}
+
+pub fn init_thumbnail_extractor() {
+    initialize_thumbnail_extractor();
+}
+
+pub fn extract_thumbnail(input_path: &str, output_path: &str) {
+    _ = extract_thumbnail_pipeline(input_path, output_path)
+        .and_then(|pipeline| run_thumbnail_pipeline(pipeline));
 }

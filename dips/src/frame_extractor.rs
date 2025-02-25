@@ -17,7 +17,7 @@ use crate::gpu::ComputeState;
 use crate::{DiPsProperties, StreamPipelineError};
 use crate::{FrameCallbackNotSpecifiedError, VideoPathNotSpecifiedError};
 
-pub fn initialize_gstreamer() {
+pub fn initialize_frame_extractor() {
     env::set_var("GST_DEBUG", "3");
 
     gst::init().unwrap();
