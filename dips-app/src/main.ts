@@ -3,12 +3,7 @@ import { appLocalDataDir } from "@tauri-apps/api/path";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-
-// let greetInputEl: HTMLInputElement | null;
-// let greetMsgEl: HTMLElement | null;
-
 let input_file_path_element: HTMLElement | null;
-let output_file_path_element: HTMLElement | null;
 let output_file_path: string | null = null;
 let dips_path: string | null;
 
@@ -22,7 +17,6 @@ async function get_file_path() {
 
       dips_path = selected_file;
 
-      // input_file_path_element.textContent = selected_file;
       let thumbnail_path: string = await appLocalDataDir();
       thumbnail_path = thumbnail_path.concat("/input_thumbnail.jpeg");
   
@@ -45,7 +39,7 @@ async function get_file_path() {
       }
 
       console.log(input_file_path_element);
-    } catch (error) {
+    } catch (error: any) {
       input_file_path_element.textContent = error.toString();
     }
   }
@@ -86,16 +80,8 @@ window.addEventListener("DOMContentLoaded", () => {
   input_file_path_element = document.querySelector("#video-container");
   document.querySelector("#input-picker")?.addEventListener("click", (e) => {
     e.preventDefault();
-    // console.log(appLocalDataDir());
     get_file_path();
   });
-
-  
-  // output_file_path_element = document.querySelector("#output-file-path-element");
-  // document.querySelector("#output-picker")?.addEventListener("click", (e) => {
-  //   e.preventDefault();
-  //   save_file_path();
-  // });
 
   document.querySelector("#dips-invoker")?.addEventListener("click", (e) => {
     e.preventDefault();

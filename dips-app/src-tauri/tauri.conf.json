@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "dips-app",
+  "productName": "DiPs",
   "version": "0.1.0",
   "identifier": "com.dips-app.app",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "dips-app",
+        "title": "DiPs",
         "width": 800,
         "height": 600
       }
