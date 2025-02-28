@@ -1,0 +1,28 @@
+import { Button, VerticalBox } from "std-widgets.slint";
+
+
+export component MainWindow inherits Window {
+    width: 640px;
+    height: 480px;
+
+    callback find_input_path() -> string;
+    callback run_dips(string);
+    
+    VerticalBox {
+        label := Text {
+            text: "Input Not Specified";
+        }
+        Button {
+            text: "Input";
+            clicked => {
+                label.text = root.find_input_path();
+            }
+        }
+        Button {
+            text: "Run";
+            clicked => {
+                root.run_dips(label.text);
+            }
+        }
+    }
+}

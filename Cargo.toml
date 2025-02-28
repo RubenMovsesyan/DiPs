@@ -1,3 +1,4 @@
 [workspace]
 resolver = "2"
-members = ["dips", "entry", "dips-app/src-tauri"]
+members = ["dips", "entry"]
+exclude = ["dips-app/src-tauri"]
