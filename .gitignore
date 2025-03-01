@@ -1,3 +1,4 @@
 test_files/
 **/target/
 test_scripts/env/
+**/appimage/

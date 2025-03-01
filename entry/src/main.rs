@@ -3,6 +3,7 @@ use native_dialog::FileDialog;
 use slint::SharedString;
 
 use dips::{self, DiPsProperties};
+// use dips_ffmpeg::{self, DiPsProperties};
 
 fn get_input_path() -> SharedString {
     let path = FileDialog::new().show_open_single_file().unwrap();
@@ -26,11 +27,15 @@ fn main() -> Result<(), slint::PlatformError> {
             None => String::from(""),
         };
 
+        // dips_ffmpeg::init_frame_extractor();
+
         dips::init_frame_extractor();
         let mut dips_properties = DiPsProperties::new()
             .video_path(path.as_str())
             .output_path(output_path)
             .build();
+
+        // dips_ffmpeg::perform_dips(&mut dips_properties);
 
         dips::perform_dips(&mut dips_properties);
     });
