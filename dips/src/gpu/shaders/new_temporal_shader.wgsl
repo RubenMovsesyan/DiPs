@@ -11,7 +11,7 @@ const SENSITIVITY: f32 = 3.0;
 // const SENSITIVITY: f32 = 360.0;
 const MEDIAN_ARRAY_SIZE: i32 = 4;
 
-const WINDOW_SIZE: i32 = 3;
+const WINDOW_SIZE: i32 = 5;
 const WIN_SIZE_SQUARE = WINDOW_SIZE * WINDOW_SIZE;
 
 // helper funcitons
@@ -116,10 +116,15 @@ fn compute_main(
 
     // Find the temporal median of the start textures
     var start_median_array: array<vec4<f32>, MEDIAN_ARRAY_SIZE>;
-    start_median_array[0] = textureLoad(start_texture_array[0], coords.xy);
-    start_median_array[1] = textureLoad(start_texture_array[1], coords.xy);
-    start_median_array[2] = textureLoad(start_texture_array[2], coords.xy);
-    start_median_array[3] = textureLoad(start_texture_array[3], coords.xy);
+    // start_median_array[0] = textureLoad(start_texture_array[0], coords.xy);
+    // start_median_array[1] = textureLoad(start_texture_array[1], coords.xy);
+    // start_median_array[2] = textureLoad(start_texture_array[2], coords.xy);
+    // start_median_array[3] = textureLoad(start_texture_array[3], coords.xy);
+    start_median_array[0] = spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[0]);
+    start_median_array[1] = spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[1]);
+    start_median_array[2] = spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[2]);
+    start_median_array[3] = spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[3]);
+
 
     // Sort the start median array
     for (var i = 0; i < MEDIAN_ARRAY_SIZE; i++) {
