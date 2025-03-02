@@ -1,4 +1,4 @@
-import { Button, VerticalBox } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox } from "std-widgets.slint";
 
 
 export component MainWindow inherits Window {
@@ -6,23 +6,47 @@ export component MainWindow inherits Window {
     height: 480px;
 
     callback find_input_path() -> string;
+    callback get_thumbnail(string) -> image;
     callback run_dips(string);
-    
+
     VerticalBox {
-        label := Text {
-            text: "Input Not Specified";
+        thumbnail := Image {}
+        path := Text {
+            text: "Choose an input file";
         }
-        Button {
-            text: "Input";
-            clicked => {
-                label.text = root.find_input_path();
+        HorizontalBox {
+            Button {
+                text: "Input";
+                clicked => {
+                    path.text = root.find_input_path();
+                    thumbnail.source = root.get_thumbnail(path.text);
+                }
             }
-        }
-        Button {
-            text: "Run";
-            clicked => {
-                root.run_dips(label.text);
+            Button {
+                text: "Run";
+                clicked => {
+                    root.run_dips(path.text);
+                }
             }
         }
     }
+
+    
+    // VerticalBox {
+    //     label := Text {
+    //         text: "Input Not Specified";
+    //     }
+    //     Button {
+    //         text: "Input";
+    //         clicked => {
+    //             label.text = root.find_input_path();
+    //         }
+    //     }
+    //     Button {
+    //         text: "Run";
+    //         clicked => {
+    //             root.run_dips(label.text);
+    //         }
+    //     }
+    // }
 }

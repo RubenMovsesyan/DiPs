@@ -1,15 +1,13 @@
 use gstreamer_app::AppSink;
 use log::*;
 
-use gstreamer::{self as gst, element_error, ClockTime, FlowError, Pipeline, ResourceError, State};
+use gstreamer::{self as gst, ClockTime, FlowError, Pipeline, ResourceError, State, element_error};
 use gstreamer_video::prelude::*;
-use std::{env, error::Error};
+use std::error::Error;
 
 use crate::StreamPipelineError;
 
 pub fn initialize_thumbnail_extractor() {
-    env::set_var("GST_DEBUG", "3");
-
     gst::init().unwrap();
     let (gst_version_major, gst_version_minor, gst_version_micro, gst_version_nano) =
         gst::version();

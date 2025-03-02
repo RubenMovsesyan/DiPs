@@ -2,15 +2,14 @@
 use log::*;
 
 // std
-use std::env;
 use std::sync::{Arc, Mutex, RwLock};
 
 // gstreamer imports
 use gstreamer::{
     self as gst, Buffer, ClockTime, Element, FlowError, FlowSuccess, Format, Pipeline, State,
 };
-use gstreamer::{element_error, element_warning, prelude::*, CoreError, LibraryError};
 use gstreamer::{Caps, ElementFactory};
+use gstreamer::{CoreError, LibraryError, element_error, element_warning, prelude::*};
 use gstreamer_app::{self, AppSink, AppSinkCallbacks, AppSrc};
 
 use crate::gpu::ComputeState;
@@ -18,8 +17,6 @@ use crate::{DiPsProperties, StreamPipelineError};
 use crate::{FrameCallbackNotSpecifiedError, VideoPathNotSpecifiedError};
 
 pub fn initialize_frame_extractor() {
-    env::set_var("GST_DEBUG", "3");
-
     gst::init().unwrap();
     let (gst_version_major, gst_version_minor, gst_version_micro, gst_version_nano) =
         gst::version();
