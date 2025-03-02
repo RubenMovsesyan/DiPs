@@ -8,7 +8,7 @@ var temporal_texture_array: binding_array<texture_storage_2d<rgba8unorm, read> >
 var output_texture: texture_storage_2d<rgba8unorm, write>;
 
 @group(3) @binding(0)
-var previous_frame: texture_storage_2d<rgba8unorm, read>;
+var previous_frame: texture_storage_2d<rgba8unorm, read_write>;
 
 const SENSITIVITY: f32 = 3.0;
 // const SENSITIVITY: f32 = 360.0;
@@ -118,29 +118,29 @@ fn compute_main(
 
 
     // Find the temporal median of the start textures
-    var start_median_array: array<vec4<f32>, MEDIAN_ARRAY_SIZE>;
-    start_median_array[0] = textureLoad(start_texture_array[0], coords.xy);
-    start_median_array[1] = textureLoad(start_texture_array[1], coords.xy);
-    start_median_array[2] = textureLoad(start_texture_array[2], coords.xy);
-    start_median_array[3] = textureLoad(start_texture_array[3], coords.xy);
+    // var start_median_array: array<vec4<f32>, MEDIAN_ARRAY_SIZE>;
+    // start_median_array[0] = textureLoad(start_texture_array[0], coords.xy);
+    // start_median_array[1] = textureLoad(start_texture_array[1], coords.xy);
+    // start_median_array[2] = textureLoad(start_texture_array[2], coords.xy);
+    // start_median_array[3] = textureLoad(start_texture_array[3], coords.xy);
 
-    // Sort the start median array
-    for (var i = 0; i < MEDIAN_ARRAY_SIZE; i++) {
-        var swapped: bool = false;
-        for (var j = 0; j < MEDIAN_ARRAY_SIZE; j++) {
-            if (get_intensity(start_median_array[j]) > get_intensity(start_median_array[j + 1])) {
-                let temp = start_median_array[j];
-                start_median_array[j] = start_median_array[j + 1];
-                start_median_array[j + 1] = temp;
+    // // Sort the start median array
+    // for (var i = 0; i < MEDIAN_ARRAY_SIZE; i++) {
+    //     var swapped: bool = false;
+    //     for (var j = 0; j < MEDIAN_ARRAY_SIZE; j++) {
+    //         if (get_intensity(start_median_array[j]) > get_intensity(start_median_array[j + 1])) {
+    //             let temp = start_median_array[j];
+    //             start_median_array[j] = start_median_array[j + 1];
+    //             start_median_array[j + 1] = temp;
 
-                swapped = true;
-            }
-        }
+    //             swapped = true;
+    //         }
+    //     }
 
-        if (!swapped) {
-            break;
-        }
-    }
+    //     if (!swapped) {
+    //         break;
+    //     }
+    // }
 
 
     
@@ -172,15 +172,30 @@ fn compute_main(
         }
     }
     
-    let original_intensity = get_intensity(start_median_array[MEDIAN_ARRAY_SIZE / 2]);
-    // let diff = (((original_intensity - get_intensity(median_array[MEDIAN_ARRAY_SIZE / 2])) * SENSITIVITY) + SENSITIVITY) % SENSITIVITY;
-    let diff = (original_intensity - get_intensity(median_array[MEDIAN_ARRAY_SIZE / 2])) * SENSITIVITY;
+    let intensity = get_intensity(median_array[MEDIAN_ARRAY_SIZE / 2]);
 
-    let deriv = textureLoad(previous_frame, coords.xy) - vec4<f32>(diff, diff, diff, 1.0);
+    let frame_intensity = vec4<f32>(intensity, intensity, intensity, 0.0);
+    
+    let deriv = (textureLoad(previous_frame, coords.xy) - frame_intensity) * SENSITIVITY * -1.0 + vec4<f32>(0.5, 0.5, 0.5, 0.0);
+    
+    textureStore(output_texture, coords.xy, vec4<f32>(deriv.rgb, 1.0));
+    textureStore(previous_frame, coords.xy, vec4<f32>(frame_intensity.rgb, 1.0));
+
+    
+    // let original_intensity = get_intensity(start_median_array[MEDIAN_ARRAY_SIZE / 2]);
+    // let diff = (((original_intensity - get_intensity(median_array[MEDIAN_ARRAY_SIZE / 2])) * SENSITIVITY) + SENSITIVITY) % SENSITIVITY;
+    // let diff = (original_intensity - get_intensity(median_array[MEDIAN_ARRAY_SIZE / 2])) * SENSITIVITY;
+    // TODO: ^ This needs to be stored in a texture to be referenced in the next frame
+    // let diff_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(diff, diff, diff);
+
+    // let deriv = textureLoad(previous_frame, coords.xy) - vec4<f32>(diff, diff, diff, 1.0);
+    // var deriv = (textureLoad(previous_frame, coords.xy) - vec4<f32>(diff_color.rgb, 1.0)) * -1.0;
+    // deriv += vec4<f32>(0.5, 0.5, 0.5, 0.0);
 
     // let new_color = hsl_to_rgb(diff, 1.0, 0.5);
     // let new_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(diff, diff, diff);
-    let new_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(deriv.rrr);
+    // let new_color = vec3<f32>(deriv.rgb);
     
-    textureStore(output_texture, coords.xy, vec4<f32>(new_color.rgb, 1.0));
+    // textureStore(output_texture, coords.xy, vec4<f32>(new_color.rgb, 1.0));
+    // textureStore(previous_frame, coords.xy, vec4<f32>(diff_color.rgb, 1.0));
 }

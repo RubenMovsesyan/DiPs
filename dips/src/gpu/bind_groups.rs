@@ -86,7 +86,7 @@ impl BindGroupsContainer {
                     binding: 0,
                     visibility: ShaderStages::COMPUTE,
                     ty: BindingType::StorageTexture {
-                        access: StorageTextureAccess::ReadOnly,
+                        access: StorageTextureAccess::ReadWrite,
                         format: TextureFormat::Rgba8Unorm,
                         view_dimension: wgpu::TextureViewDimension::D2,
                     },

@@ -223,37 +223,37 @@ impl ComputeState {
         drop(padded_data);
 
         // write the new data to the previous frame texture
-        self.queue.write_texture(
-            self.bind_groups_container
-                .previous_frame
-                .as_ref()
-                .unwrap()
-                .as_image_copy(),
-            &self.pixels,
-            TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(
-                    self.bind_groups_container
-                        .texture_dimensions
-                        .as_ref()
-                        .unwrap()
-                        .width
-                        * 4,
-                ),
-                rows_per_image: Some(
-                    self.bind_groups_container
-                        .texture_dimensions
-                        .as_ref()
-                        .unwrap()
-                        .height,
-                ),
-            },
-            self.bind_groups_container
-                .texture_dimensions
-                .as_ref()
-                .unwrap()
-                .clone(),
-        );
+        // self.queue.write_texture(
+        //     self.bind_groups_container
+        //         .previous_frame
+        //         .as_ref()
+        //         .unwrap()
+        //         .as_image_copy(),
+        //     &self.pixels,
+        //     TexelCopyBufferLayout {
+        //         offset: 0,
+        //         bytes_per_row: Some(
+        //             self.bind_groups_container
+        //                 .texture_dimensions
+        //                 .as_ref()
+        //                 .unwrap()
+        //                 .width
+        //                 * 4,
+        //         ),
+        //         rows_per_image: Some(
+        //             self.bind_groups_container
+        //                 .texture_dimensions
+        //                 .as_ref()
+        //                 .unwrap()
+        //                 .height,
+        //         ),
+        //     },
+        //     self.bind_groups_container
+        //         .texture_dimensions
+        //         .as_ref()
+        //         .unwrap()
+        //         .clone(),
+        // );
 
         self.bind_groups_container
             .output_texture_buffer
