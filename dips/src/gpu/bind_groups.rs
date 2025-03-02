@@ -15,14 +15,22 @@ pub const TEMPORAL_BUFFER_SIZE: u32 = 4;
 pub struct BindGroupsContainer {
     pub texture_dimensions: Option<Extent3d>,
 
+    // Array of textures for the starting frames for a temporal compare
     start_textures_bind_group_layout: BindGroupLayout,
     pub start_textures_bind_group: Option<BindGroup>,
     start_textures: Vec<Texture>,
 
+    // Array of textures to use for temporal filtering for the current frame
     temporal_textures_bind_group_layout: BindGroupLayout,
     pub temporal_textures_bind_group: Option<BindGroup>,
     temporal_textures: Vec<Texture>,
 
+    // Previously created frame to reference in the shader
+    previous_frame_bind_group_layout: BindGroupLayout,
+    pub previous_frame_bind_group: Option<BindGroup>,
+    pub previous_frame: Option<Texture>,
+
+    // Output of the shader computation goes here
     output_texture_bind_group_layout: BindGroupLayout,
     pub output_texture_bind_group: Option<BindGroup>,
     pub output_texture: Option<Texture>,
@@ -71,6 +79,21 @@ impl BindGroupsContainer {
                 }],
             });
 
+        let previous_frame_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("Previous frame bind group layout"),
+                entries: &[BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::COMPUTE,
+                    ty: BindingType::StorageTexture {
+                        access: StorageTextureAccess::ReadOnly,
+                        format: TextureFormat::Rgba8Unorm,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                }],
+            });
+
         let output_texture_bind_group_layout =
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("Output textures bind group layout"),
@@ -93,6 +116,7 @@ impl BindGroupsContainer {
                 &start_textures_bind_group_layout,
                 &temporal_textures_bind_group_layout,
                 &output_texture_bind_group_layout,
+                &previous_frame_bind_group_layout,
             ],
             push_constant_ranges: &[],
         });
@@ -107,6 +131,10 @@ impl BindGroupsContainer {
             temporal_textures_bind_group_layout,
             temporal_textures_bind_group: None,
             temporal_textures: Vec::new(),
+
+            previous_frame_bind_group_layout,
+            previous_frame_bind_group: None,
+            previous_frame: None,
 
             output_texture_bind_group_layout,
             output_texture_bind_group: None,
@@ -191,6 +219,28 @@ impl BindGroupsContainer {
             self.temporal_textures.push(temporal_texture);
         }
 
+        let previous_frame = device.create_texture(&TextureDescriptor {
+            label: Some("Previous Frame"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba8Unorm,
+            usage: TextureUsages::STORAGE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        queue.write_texture(
+            previous_frame.as_image_copy(),
+            &textures[textures.len() - 1], // HACK using last image in the textures slice for now
+            TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
+            texture_size,
+        );
+
         // Create the output texture
         let output_texture = device.create_texture(&TextureDescriptor {
             label: Some("output texture"),
@@ -236,6 +286,17 @@ impl BindGroupsContainer {
             }],
         });
 
+        let previous_frame_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("Previous Frame Bind Group"),
+            layout: &self.previous_frame_bind_group_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: BindingResource::TextureView(
+                    &previous_frame.create_view(&TextureViewDescriptor::default()),
+                ),
+            }],
+        });
+
         let output_texture_bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("Output Texture Bind Group"),
             layout: &self.output_texture_bind_group_layout,
@@ -248,9 +309,11 @@ impl BindGroupsContainer {
         });
 
         // Set the bind groups
+        self.previous_frame = Some(previous_frame);
         self.output_texture = Some(output_texture);
         self.start_textures_bind_group = Some(start_textures_bind_group);
         self.temporal_textures_bind_group = Some(temporal_textures_bind_group);
+        self.previous_frame_bind_group = Some(previous_frame_bind_group);
         self.output_texture_bind_group = Some(output_texture_bind_group);
     }
 

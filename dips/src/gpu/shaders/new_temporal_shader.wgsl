@@ -7,6 +7,9 @@ var temporal_texture_array: binding_array<texture_storage_2d<rgba8unorm, read> >
 @group(2) @binding(0)
 var output_texture: texture_storage_2d<rgba8unorm, write>;
 
+@group(3) @binding(0)
+var previous_frame: texture_storage_2d<rgba8unorm, read>;
+
 const SENSITIVITY: f32 = 3.0;
 // const SENSITIVITY: f32 = 360.0;
 const MEDIAN_ARRAY_SIZE: i32 = 4;
@@ -173,8 +176,11 @@ fn compute_main(
     // let diff = (((original_intensity - get_intensity(median_array[MEDIAN_ARRAY_SIZE / 2])) * SENSITIVITY) + SENSITIVITY) % SENSITIVITY;
     let diff = (original_intensity - get_intensity(median_array[MEDIAN_ARRAY_SIZE / 2])) * SENSITIVITY;
 
+    let deriv = textureLoad(previous_frame, coords.xy) - vec4<f32>(diff, diff, diff, 1.0);
+
     // let new_color = hsl_to_rgb(diff, 1.0, 0.5);
-    let new_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(diff, diff, diff);
+    // let new_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(diff, diff, diff);
+    let new_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(deriv.rrr);
     
     textureStore(output_texture, coords.xy, vec4<f32>(new_color.rgb, 1.0));
 }

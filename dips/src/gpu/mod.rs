@@ -4,11 +4,11 @@ use bind_groups::BindGroupsContainer;
 use log::*;
 use pollster::*;
 use wgpu::{
-    include_wgsl, Backends, CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline,
+    Backends, CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline,
     ComputePipelineDescriptor, Device, DeviceDescriptor, Features, Instance, InstanceDescriptor,
     Limits, Maintain, MapMode, MemoryHints, Origin3d, PipelineCompilationOptions, PowerPreference,
     Queue, RequestAdapterOptionsBase, TexelCopyBufferInfo, TexelCopyBufferLayout,
-    TexelCopyTextureInfo, TextureAspect,
+    TexelCopyTextureInfo, TextureAspect, include_wgsl,
 };
 
 mod bind_groups;
@@ -134,6 +134,7 @@ impl ComputeState {
                 timestamp_writes: None,
             });
 
+            // Setup the pipeline and set the bind groups
             compute_pass.set_pipeline(&self.compute_pipeline);
             compute_pass.set_bind_group(
                 0,
@@ -155,6 +156,14 @@ impl ComputeState {
                 2,
                 self.bind_groups_container
                     .output_texture_bind_group
+                    .as_ref()
+                    .unwrap(),
+                &[],
+            );
+            compute_pass.set_bind_group(
+                3,
+                self.bind_groups_container
+                    .previous_frame_bind_group
                     .as_ref()
                     .unwrap(),
                 &[],
@@ -212,6 +221,39 @@ impl ComputeState {
         }
 
         drop(padded_data);
+
+        // write the new data to the previous frame texture
+        self.queue.write_texture(
+            self.bind_groups_container
+                .previous_frame
+                .as_ref()
+                .unwrap()
+                .as_image_copy(),
+            &self.pixels,
+            TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(
+                    self.bind_groups_container
+                        .texture_dimensions
+                        .as_ref()
+                        .unwrap()
+                        .width
+                        * 4,
+                ),
+                rows_per_image: Some(
+                    self.bind_groups_container
+                        .texture_dimensions
+                        .as_ref()
+                        .unwrap()
+                        .height,
+                ),
+            },
+            self.bind_groups_container
+                .texture_dimensions
+                .as_ref()
+                .unwrap()
+                .clone(),
+        );
 
         self.bind_groups_container
             .output_texture_buffer
