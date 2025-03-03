@@ -282,10 +282,7 @@ pub fn create_video_frame_decoder_pipeline(
     Ok(frame_decoding_pipeline)
 }
 
-pub fn run_pipeline(
-    pipeline: Pipeline,
-    // compute: Arc<RwLock<ComputeState>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_pipeline(pipeline: Pipeline) -> Result<(), Box<dyn std::error::Error>> {
     pipeline.set_state(State::Playing)?;
 
     let bus = pipeline
@@ -315,11 +312,6 @@ pub fn run_pipeline(
     }
 
     pipeline.set_state(State::Null)?;
-
-    // compute
-    //     .write()
-    //     .expect("Could Not obtain write")
-    //     .save_output();
 
     Ok(())
 }
