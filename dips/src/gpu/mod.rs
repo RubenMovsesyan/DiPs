@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use bind_groups::BindGroupsContainer;
+use bind_groups::{BindGroupsContainer, PreComputeBindGroupsContainer};
 use log::*;
 use pollster::*;
 use wgpu::{
@@ -17,6 +17,11 @@ pub struct ComputeState {
     device: Device,
     queue: Queue,
 
+    // Pre compute stage for creating the start texture
+    pre_compute_pipeline: ComputePipeline,
+    pre_compute_bind_groups_container: PreComputeBindGroupsContainer,
+
+    // Main pipeline for compute DiPs
     compute_pipeline: ComputePipeline,
     bind_groups_container: BindGroupsContainer,
 
@@ -60,22 +65,47 @@ impl ComputeState {
             )
             .block_on()?;
 
-        let shader = device.create_shader_module(include_wgsl!("./shaders/dips_shader.wgsl"));
+        // Create the pre compute pipeline
+        let (pre_compute_bind_groups_container, pre_compute_pipeline) = {
+            let shader = device.create_shader_module(todo!());
 
-        let bind_groups_container = BindGroupsContainer::new(&device);
+            let pre_compute_bind_groups_container = PreComputeBindGroupsContainer::new(&device);
 
-        let compute_pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
-            label: Some("Compute Pipeline"),
-            layout: Some(&bind_groups_container.pipeline_layout),
-            module: &shader,
-            entry_point: Some("compute_main"),
-            compilation_options: PipelineCompilationOptions::default(),
-            cache: None,
-        });
+            let pre_compute_pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
+                label: Some("Compute pipeline"),
+                layout: Some(&pre_compute_bind_groups_container.pipeline_layout),
+                module: &shader,
+                entry_point: Some("pre_compute_main"),
+                compilation_options: PipelineCompilationOptions::default(),
+                cache: None,
+            });
+
+            (pre_compute_bind_groups_container, pre_compute_pipeline)
+        };
+
+        // Create the main compute pipeline
+        let (bind_groups_container, compute_pipeline) = {
+            let shader = device.create_shader_module(include_wgsl!("./shaders/dips_shader.wgsl"));
+
+            let bind_groups_container = BindGroupsContainer::new(&device);
+
+            let compute_pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
+                label: Some("Compute Pipeline"),
+                layout: Some(&bind_groups_container.pipeline_layout),
+                module: &shader,
+                entry_point: Some("compute_main"),
+                compilation_options: PipelineCompilationOptions::default(),
+                cache: None,
+            });
+
+            (bind_groups_container, compute_pipeline)
+        };
 
         Ok(Self {
             device,
             queue,
+            pre_compute_pipeline,
+            pre_compute_bind_groups_container,
             compute_pipeline,
             bind_groups_container,
             pixels: Vec::new(),
