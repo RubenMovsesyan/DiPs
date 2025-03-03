@@ -4,11 +4,11 @@ use bind_groups::BindGroupsContainer;
 use log::*;
 use pollster::*;
 use wgpu::{
-    include_wgsl, Backends, CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline,
+    Backends, CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline,
     ComputePipelineDescriptor, Device, DeviceDescriptor, Features, Instance, InstanceDescriptor,
     Limits, Maintain, MapMode, MemoryHints, Origin3d, PipelineCompilationOptions, PowerPreference,
     Queue, RequestAdapterOptionsBase, TexelCopyBufferInfo, TexelCopyBufferLayout,
-    TexelCopyTextureInfo, TextureAspect,
+    TexelCopyTextureInfo, TextureAspect, include_wgsl,
 };
 
 mod bind_groups;
@@ -60,8 +60,7 @@ impl ComputeState {
             )
             .block_on()?;
 
-        let shader =
-            device.create_shader_module(include_wgsl!("./shaders/new_temporal_shader.wgsl"));
+        let shader = device.create_shader_module(include_wgsl!("./shaders/dips_shader.wgsl"));
 
         let bind_groups_container = BindGroupsContainer::new(&device);
 

@@ -11,7 +11,7 @@ const SENSITIVITY: f32 = 3.0;
 // const SENSITIVITY: f32 = 360.0;
 const MEDIAN_ARRAY_SIZE: i32 = 4;
 
-const WINDOW_SIZE: i32 = 5;
+const WINDOW_SIZE: i32 = 3;
 const WIN_SIZE_SQUARE = WINDOW_SIZE * WINDOW_SIZE;
 
 // helper funcitons
