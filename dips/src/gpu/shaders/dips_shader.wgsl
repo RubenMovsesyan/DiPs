@@ -11,7 +11,6 @@ var<uniform> starting_index: u32;
 var output_texture: texture_storage_2d<rgba8unorm, write>;
 
 const SENSITIVITY: f32 = 3.0;
-// const SENSITIVITY: f32 = 360.0;
 const MEDIAN_ARRAY_SIZE: i32 = 4;
 
 const WINDOW_SIZE: i32 = 3;
@@ -30,44 +29,19 @@ fn get_intensity(color: vec4<f32>) -> f32 {
     return luminance;
 }
 
-// h must be between 0 and 360
-fn hsl_to_rgb(h: f32, s: f32, l: f32) -> vec3<f32> {
-    let chroma = s * (1 - abs(2 * l - 1));
-    let h_prime = h / 60.0;
-    let x = chroma * (1 - abs(h_prime % 2.0 - 1));
-
-    let m = l - chroma / 2.0;
-
-    if (h_prime >= 0 && h_prime < 1) {
-        return vec3<f32>(chroma + m, x + m, 0.0 + m);
-    } else if (h_prime >= 1 && h_prime < 2) {
-        return vec3<f32>(x + m, chroma + m, 0.0 + m);
-    } else if (h_prime >= 2 && h_prime < 3) {
-        return vec3<f32>(0.0 + m, chroma + m, x + m);
-    } else if (h_prime >= 3 && h_prime < 4) {
-        return vec3<f32>(0.0 + m, x + m, chroma + m);
-    } else if (h_prime >= 4 && h_prime < 5) {
-        return vec3<f32>(x + m, 0.0 + m, chroma + m);
-    } else if (h_prime >= 5 && h_prime <= 6) {
-        return vec3<f32>(chroma + m, 0.0 + m, x + m);
-    } else {
-        return vec3<f32>(0.0 + m, 0.0 + m, 0.0 + m);
-    } 
-}
-
 /// Takes in the coordinates of the pixel and returns the spatial median filter
 /// color of that pixel with the set WINDOW_SIZE
 fn spatial_median_filter(coords: vec2<u32>, dimensions: vec2<u32>, input_texture: texture_storage_2d<rgba8unorm, read_write>) -> vec4<f32> {
-    var median_array: array<vec4<f32>, WIN_SIZE_SQUARE>;
+    var median_array: array<f32, WIN_SIZE_SQUARE>;
     let win_size_2 = WINDOW_SIZE / 2;
 
     for (var i = -win_size_2; i < win_size_2; i++) {
         for (var j = -win_size_2; j < win_size_2; j++) {
-            var color: vec4<f32>;
+            var color: f32;
             if (i32(coords.x) + i >= i32(dimensions.x) || i32(coords.y) + j >= i32(dimensions.y) || i32(coords.x) + i < 0 || i32(coords.y) + j < 0) {
-                color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+                color = 0.0;
             } else {
-                color = textureLoad(input_texture, vec2<u32>(u32(i32(coords.x) + i), u32(i32(coords.y) + j)));
+                color = get_intensity(textureLoad(input_texture, vec2<u32>(u32(i32(coords.x) + i), u32(i32(coords.y) + j))));
             }
 
             let array_i = i + win_size_2;
@@ -83,7 +57,7 @@ fn spatial_median_filter(coords: vec2<u32>, dimensions: vec2<u32>, input_texture
     for (var i = 0; i < WIN_SIZE_SQUARE; i++) {
         var swapped: bool = false;
         for (var j = 0; j < WIN_SIZE_SQUARE; j++) {
-            if (get_intensity(median_array[j]) > get_intensity(median_array[j + 1])) {
+            if (median_array[j] > median_array[j + 1]) {
                 let temp = median_array[j];
                 median_array[j] = median_array[j + 1];
                 median_array[j + 1] = temp;
@@ -97,7 +71,8 @@ fn spatial_median_filter(coords: vec2<u32>, dimensions: vec2<u32>, input_texture
         }
     }
 
-    return vec4<f32>(median_array[(WIN_SIZE_SQUARE / 2) + 1].rgb, 1.0);
+    let intensity = median_array[(WIN_SIZE_SQUARE / 2) + 1];
+    return vec4<f32>(intensity, intensity, intensity, 1.0);
 }
 
 @compute @workgroup_size(16, 16)
