@@ -213,30 +213,40 @@ pub fn create_video_frame_decoder_pipeline(
                                         (0, 0)
                                     };
 
-                                    let buffer = sample.buffer().expect("Failed to get buffer");
-                                    let map = buffer.map_readable().expect("Failed to map buffer");
+                                    let mut buffer =
+                                        sample.buffer_owned().expect("Failed to get buffer");
 
-                                    let frame_data = map.as_slice();
-                                    let pts = buffer.pts();
-                                    let duration = buffer.duration();
+                                    let buffer_ref = buffer.make_mut();
+                                    // .get_mut()
+                                    // .expect("Could not get a reference to buffer");
+
+                                    let pts = buffer_ref.pts();
+                                    // let duration = buffer_ref.duration();
+
+                                    let mut map =
+                                        buffer_ref.map_writable().expect("Failed to map buffer");
+
+                                    let mut frame_data = map.as_mut_slice();
 
                                     info!("pts: {:#?}", pts);
 
                                     if let Ok(mut compute) = compute_clone.write() {
                                         // Here is where the callback is called for each frame
                                         if let Ok(callback) = frame_callback_clone.lock() {
-                                            let callback_data = callback(
+                                            callback(
                                                 width as u32,
                                                 height as u32,
-                                                frame_data,
+                                                &mut frame_data,
                                                 &mut compute,
                                             );
 
-                                            let mut new_buffer = Buffer::from_slice(callback_data);
+                                            drop(map);
+
+                                            // let mut new_buffer = Buffer::from_slice(callback_data);
                                             // Set the PTS and duration of the new buffer
                                             // INFO: This might not be needed
-                                            new_buffer.make_mut().set_pts(pts);
-                                            new_buffer.make_mut().set_duration(duration);
+                                            // new_buffer.make_mut().set_pts(pts);
+                                            // new_buffer.make_mut().set_duration(duration);
 
                                             if let Ok(appsrc) = app_src_clone.lock() {
                                                 // Set the caps of the appsrc to the same as the sample
@@ -244,7 +254,7 @@ pub fn create_video_frame_decoder_pipeline(
                                                     appsrc.set_caps(Some(&caps.copy()));
                                                 }
 
-                                                match appsrc.push_buffer(new_buffer) {
+                                                match appsrc.push_buffer(buffer) {
                                                     Ok(_) => {
                                                         info!("Successfully pushed to appsrc")
                                                     }

@@ -279,7 +279,7 @@ impl ComputeState {
         }
     }
 
-    pub fn dispatch(&mut self) -> Option<Vec<u8>> {
+    pub fn dispatch(&mut self) -> Option<&[u8]> {
         if let MainComputeBindGroups::Initialized(bind_groups) = &self.main_compute_bind_groups {
             let mut encoder = self
                 .device
@@ -366,7 +366,7 @@ impl ComputeState {
                 bind_groups.output_texture_buffer.unmap();
             }
 
-            Some(self.pixels.clone())
+            Some(&self.pixels)
         } else {
             None
         }

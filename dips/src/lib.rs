@@ -6,7 +6,8 @@ use std::{
 
 use gpu::ComputeState;
 // Logging
-// use log::*;
+#[allow(unused_imports)]
+use log::*;
 
 mod frame_extractor;
 mod gpu;
@@ -19,7 +20,7 @@ use thumbnail_extractor::{
 };
 
 // Type alias for the callback function
-type CallbackFunction = fn(u32, u32, &[u8], &mut ComputeState) -> Vec<u8>;
+type CallbackFunction = fn(u32, u32, &mut [u8], &mut ComputeState);
 
 pub struct DiPsProperties {
     video_path: Option<String>,
@@ -141,18 +142,11 @@ impl Display for StreamPipelineError {
     }
 }
 
-fn frame_callback(
-    width: u32,
-    height: u32,
-    frame_data: &[u8],
-    compute: &mut ComputeState,
-) -> Vec<u8> {
+fn frame_callback(width: u32, height: u32, frame_data: &mut [u8], compute: &mut ComputeState) {
     compute.add_texture(width, height, frame_data);
 
     if let Some(new_frame) = compute.dispatch() {
-        new_frame
-    } else {
-        frame_data.to_vec()
+        frame_data.copy_from_slice(&new_frame);
     }
 }
 
@@ -163,7 +157,9 @@ pub fn init_frame_extractor() {
 pub fn perform_dips(properties: &mut DiPsProperties) {
     properties.frame_callback(frame_callback);
 
+    let now = std::time::Instant::now();
     _ = create_video_frame_decoder_pipeline(properties).and_then(|pipeline| run_pipeline(pipeline));
+    info!("Duration: {:.2?}", now.elapsed());
 }
 
 pub fn init_thumbnail_extractor() {
