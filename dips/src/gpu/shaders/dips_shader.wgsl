@@ -109,17 +109,17 @@ fn compute_main(
     }
 
 
-    var median_array: array<vec4<f32>, MEDIAN_ARRAY_SIZE>;
-    median_array[0] = spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[0]);
-    median_array[1] = spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[1]);
-    median_array[2] = spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[2]);
-    median_array[3] = spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[3]);
+    var median_array: array<f32, MEDIAN_ARRAY_SIZE>;
+    median_array[0] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[0]));
+    median_array[1] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[1]));
+    median_array[2] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[2]));
+    median_array[3] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[3]));
 
     // Sort the temporl texture array
     for (var i = 0; i < MEDIAN_ARRAY_SIZE; i++) {
         var swapped: bool = false;
         for (var j = 0; j < MEDIAN_ARRAY_SIZE; j++) {
-            if (get_intensity(median_array[j]) > get_intensity(median_array[j + 1])) {
+            if (median_array[j] > median_array[j + 1]) {
                 let temp = median_array[j];
                 median_array[j] = median_array[j + 1];
                 median_array[j + 1] = temp;
@@ -133,9 +133,9 @@ fn compute_main(
         }
     }
     
-    let original_intensity = get_intensity(textureLoad(start_texture, coords.xy));
+    let original_intensity = textureLoad(start_texture, coords.xy).r;
     // let diff = (((original_intensity - get_intensity(median_array[MEDIAN_ARRAY_SIZE / 2])) * SENSITIVITY) + SENSITIVITY) % SENSITIVITY;
-    let diff = (original_intensity - get_intensity(median_array[MEDIAN_ARRAY_SIZE / 2])) * SENSITIVITY;
+    let diff = (original_intensity - median_array[MEDIAN_ARRAY_SIZE / 2]) * SENSITIVITY;
 
     // let new_color = hsl_to_rgb(diff, 1.0, 0.5);
     let new_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(diff, diff, diff);
