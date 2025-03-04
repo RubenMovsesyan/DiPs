@@ -11,6 +11,7 @@ use gpu::ComputeState;
 mod frame_extractor;
 mod gpu;
 mod thumbnail_extractor;
+mod utils;
 
 use frame_extractor::*;
 use thumbnail_extractor::{

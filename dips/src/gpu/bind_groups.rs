@@ -1,6 +1,9 @@
 use std::{error::Error, fmt::Display, num::NonZeroU32};
 
-// use log::*;
+use crate::utils::indexing::UCircularIndex;
+
+#[allow(unused_imports)]
+use log::*;
 
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
@@ -179,6 +182,8 @@ pub struct MainComputeBindGroupsContainer {
     pub output_texture_bind_group: BindGroup,
     pub output_texture: Texture,
     pub output_texture_buffer: Buffer,
+
+    circular_index: UCircularIndex,
 }
 
 impl MainComputeBindGroupsContainer {
@@ -328,6 +333,8 @@ impl MainComputeBindGroupsContainer {
             output_texture_bind_group,
             output_texture,
             output_texture_buffer,
+
+            circular_index: UCircularIndex::new(0, TEMPORAL_BUFFER_SIZE),
         }
     }
 
@@ -344,6 +351,7 @@ impl MainComputeBindGroupsContainer {
         );
     }
 
+    #[allow(dead_code)]
     pub fn update_temporal_textures(&mut self, input_textures: &[Vec<u8>], queue: &Queue) {
         for (temporal_texture, input_texture) in
             self.temporal_textures.iter().zip(input_textures.iter())
@@ -359,6 +367,21 @@ impl MainComputeBindGroupsContainer {
                 self.texture_dimensions,
             );
         }
+    }
+
+    pub fn update_temporal_texture(&mut self, input_texture: &[u8], queue: &Queue) {
+        queue.write_texture(
+            self.temporal_textures[*self.circular_index.as_ref()].as_image_copy(),
+            input_texture,
+            TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(self.texture_dimensions.width * 4),
+                rows_per_image: Some(self.texture_dimensions.height),
+            },
+            self.texture_dimensions,
+        );
+
+        self.circular_index += 1;
     }
 }
 
@@ -480,7 +503,6 @@ pub struct PreComputeBindGroupsContainer {
 
     // Pre compute start textures
     pub start_textures_bind_group: BindGroup,
-    start_textures: Vec<Texture>,
 
     // Output of the pre compute state
     pub output_texture_bind_group: BindGroup,
@@ -505,7 +527,6 @@ impl PreComputeBindGroupsContainer {
 
         // Create the array of starting textures
         let mut start_views = Vec::with_capacity(TEMPORAL_BUFFER_SIZE);
-        let mut start_textures = Vec::with_capacity(TEMPORAL_BUFFER_SIZE);
         for frame_data in textures.iter() {
             let start_texture = device.create_texture(&TextureDescriptor {
                 label: Some("pre compute Start Textures"),
@@ -530,7 +551,6 @@ impl PreComputeBindGroupsContainer {
             );
 
             start_views.push(start_texture.create_view(&TextureViewDescriptor::default()));
-            start_textures.push(start_texture);
         }
 
         // Create the output texture
@@ -588,7 +608,6 @@ impl PreComputeBindGroupsContainer {
             texture_dimensions,
 
             start_textures_bind_group,
-            start_textures,
 
             output_texture_bind_group,
             output_texture,

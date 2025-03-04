@@ -182,8 +182,9 @@ impl ComputeState {
                     if let MainComputeBindGroups::Initialized(bind_groups) =
                         &mut self.main_compute_bind_groups
                     {
-                        bind_groups
-                            .update_temporal_textures(self.textures.make_contiguous(), &self.queue);
+                        // bind_groups
+                        //     .update_temporal_textures(self.textures.make_contiguous(), &self.queue);
+                        bind_groups.update_temporal_texture(frame_data, &self.queue);
                     }
                 }
             }

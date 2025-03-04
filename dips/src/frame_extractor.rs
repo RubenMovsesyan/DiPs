@@ -220,7 +220,7 @@ pub fn create_video_frame_decoder_pipeline(
                                     let pts = buffer.pts();
                                     let duration = buffer.duration();
 
-                                    info!("pts: {:#?}\nduration: {:#?}", pts, duration);
+                                    info!("pts: {:#?}", pts);
 
                                     if let Ok(mut compute) = compute_clone.write() {
                                         // Here is where the callback is called for each frame
