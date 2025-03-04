@@ -1,14 +1,10 @@
 @group(0) @binding(0)
-var start_texture: texture_storage_2d<rgba8unorm, read>;
+var start_texture_array: binding_array<texture_storage_2d<rgba8unorm, read> >;
 
 @group(1) @binding(0)
-var temporal_texture_array: binding_array<texture_storage_2d<rgba8unorm, read> >;
-
-@group(2) @binding(0)
 var output_texture: texture_storage_2d<rgba8unorm, write>;
 
 const SENSITIVITY: f32 = 3.0;
-// const SENSITIVITY: f32 = 360.0;
 const MEDIAN_ARRAY_SIZE: i32 = 4;
 
 const WINDOW_SIZE: i32 = 3;
@@ -25,31 +21,6 @@ fn get_intensity(color: vec4<f32>) -> f32 {
     let luminance = (c_max + c_min) / 2.0;
 
     return luminance;
-}
-
-// h must be between 0 and 360
-fn hsl_to_rgb(h: f32, s: f32, l: f32) -> vec3<f32> {
-    let chroma = s * (1 - abs(2 * l - 1));
-    let h_prime = h / 60.0;
-    let x = chroma * (1 - abs(h_prime % 2.0 - 1));
-
-    let m = l - chroma / 2.0;
-
-    if (h_prime >= 0 && h_prime < 1) {
-        return vec3<f32>(chroma + m, x + m, 0.0 + m);
-    } else if (h_prime >= 1 && h_prime < 2) {
-        return vec3<f32>(x + m, chroma + m, 0.0 + m);
-    } else if (h_prime >= 2 && h_prime < 3) {
-        return vec3<f32>(0.0 + m, chroma + m, x + m);
-    } else if (h_prime >= 3 && h_prime < 4) {
-        return vec3<f32>(0.0 + m, x + m, chroma + m);
-    } else if (h_prime >= 4 && h_prime < 5) {
-        return vec3<f32>(x + m, 0.0 + m, chroma + m);
-    } else if (h_prime >= 5 && h_prime <= 6) {
-        return vec3<f32>(chroma + m, 0.0 + m, x + m);
-    } else {
-        return vec3<f32>(0.0 + m, 0.0 + m, 0.0 + m);
-    } 
 }
 
 /// Takes in the coordinates of the pixel and returns the spatial median filter
@@ -98,7 +69,7 @@ fn spatial_median_filter(coords: vec2<u32>, dimensions: vec2<u32>, input_texture
 }
 
 @compute @workgroup_size(16, 16)
-fn compute_main(
+fn pre_compute_main(
     @builtin(global_invocation_id) global_id: vec3<u32>,
 ) {
     let dimensions = textureDimensions(output_texture);
@@ -108,21 +79,21 @@ fn compute_main(
         return;
     }
 
+    // Find the temporal median of the start textures
+    var start_median_array: array<f32, MEDIAN_ARRAY_SIZE>;
+    start_median_array[0] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[0]));
+    start_median_array[1] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[1]));
+    start_median_array[2] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[2]));
+    start_median_array[3] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[3]));
 
-    var median_array: array<f32, MEDIAN_ARRAY_SIZE>;
-    median_array[0] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[0]));
-    median_array[1] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[1]));
-    median_array[2] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[2]));
-    median_array[3] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[3]));
-
-    // Sort the temporl texture array
+    // Sort the start median array
     for (var i = 0; i < MEDIAN_ARRAY_SIZE; i++) {
         var swapped: bool = false;
         for (var j = 0; j < MEDIAN_ARRAY_SIZE; j++) {
-            if (median_array[j] > median_array[j + 1]) {
-                let temp = median_array[j];
-                median_array[j] = median_array[j + 1];
-                median_array[j + 1] = temp;
+            if (start_median_array[j] > start_median_array[j + 1]) {
+                let temp = start_median_array[j];
+                start_median_array[j] = start_median_array[j + 1];
+                start_median_array[j + 1] = temp;
 
                 swapped = true;
             }
@@ -132,13 +103,9 @@ fn compute_main(
             break;
         }
     }
-    
-    let original_intensity = textureLoad(start_texture, coords.xy).r;
-    // let diff = (((original_intensity - get_intensity(median_array[MEDIAN_ARRAY_SIZE / 2])) * SENSITIVITY) + SENSITIVITY) % SENSITIVITY;
-    let diff = (original_intensity - median_array[MEDIAN_ARRAY_SIZE / 2]) * SENSITIVITY;
 
-    // let new_color = hsl_to_rgb(diff, 1.0, 0.5);
-    let new_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(diff, diff, diff);
-    
+    let intensity = start_median_array[MEDIAN_ARRAY_SIZE / 2];
+    let new_color = vec3<f32>(intensity, intensity, intensity);
+
     textureStore(output_texture, coords.xy, vec4<f32>(new_color.rgb, 1.0));
 }

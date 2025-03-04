@@ -11,6 +11,7 @@ use gpu::ComputeState;
 mod frame_extractor;
 mod gpu;
 mod thumbnail_extractor;
+mod utils;
 
 use frame_extractor::*;
 use thumbnail_extractor::{
@@ -148,9 +149,8 @@ fn frame_callback(
 ) -> Vec<u8> {
     compute.add_texture(width, height, frame_data);
 
-    if compute.can_dispatch() {
-        compute.dispatch();
-        compute.get_pixels()
+    if let Some(new_frame) = compute.dispatch() {
+        new_frame
     } else {
         frame_data.to_vec()
     }
