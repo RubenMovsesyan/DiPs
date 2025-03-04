@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.96"
+bytemuck = "1.22.0"
 gstreamer = "0.23.5"
 gstreamer-app = "0.23.5"
 gstreamer-pbutils = "0.23.5"

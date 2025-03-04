@@ -6,7 +6,8 @@ use std::{
 
 use gpu::ComputeState;
 // Logging
-// use log::*;
+#[allow(unused_imports)]
+use log::*;
 
 mod frame_extractor;
 mod gpu;

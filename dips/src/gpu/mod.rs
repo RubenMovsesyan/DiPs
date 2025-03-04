@@ -80,7 +80,8 @@ impl ComputeState {
                     required_features: Features::TEXTURE_BINDING_ARRAY
                         | Features::STORAGE_RESOURCE_BINDING_ARRAY
                         | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
-                        | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+                        | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+                        | Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
                     required_limits: Limits::default(),
                     memory_hints: MemoryHints::default(),
                 },
@@ -182,8 +183,6 @@ impl ComputeState {
                     if let MainComputeBindGroups::Initialized(bind_groups) =
                         &mut self.main_compute_bind_groups
                     {
-                        // bind_groups
-                        //     .update_temporal_textures(self.textures.make_contiguous(), &self.queue);
                         bind_groups.update_temporal_texture(frame_data, &self.queue);
                     }
                 }
