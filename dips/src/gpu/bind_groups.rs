@@ -7,10 +7,11 @@ use log::*;
 
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferDescriptor, BufferUsages,
-    Device, Extent3d, PipelineLayout, PipelineLayoutDescriptor, Queue, ShaderStages,
-    StorageTextureAccess, TexelCopyBufferLayout, Texture, TextureDescriptor, TextureDimension,
-    TextureFormat, TextureUsages, TextureViewDescriptor,
+    BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferBindingType,
+    BufferDescriptor, BufferUsages, Device, Extent3d, PipelineLayout, PipelineLayoutDescriptor,
+    Queue, ShaderStages, StorageTextureAccess, TexelCopyBufferLayout, Texture, TextureDescriptor,
+    TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
+    util::{BufferInitDescriptor, DeviceExt},
 };
 
 // Constants
@@ -69,6 +70,7 @@ impl MainComputeBindGroups {
                         height,
                         starting_texture,
                         temporal_textures,
+                        0, // starting temporal index
                         queue,
                     ));
             }
@@ -122,16 +124,28 @@ impl MainComputeBindGroupLayouts {
         let temporal_textures_bind_group_layout =
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("main compute temporal textures bind group layout"),
-                entries: &[BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::COMPUTE,
-                    ty: BindingType::StorageTexture {
-                        access: StorageTextureAccess::ReadOnly,
-                        format: TextureFormat::Rgba8Unorm,
-                        view_dimension: wgpu::TextureViewDimension::D2,
+                entries: &[
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::COMPUTE,
+                        ty: BindingType::StorageTexture {
+                            access: StorageTextureAccess::ReadWrite,
+                            format: TextureFormat::Rgba8Unorm,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                        },
+                        count: NonZeroU32::new(TEMPORAL_BUFFER_SIZE as u32),
                     },
-                    count: NonZeroU32::new(TEMPORAL_BUFFER_SIZE as u32),
-                }],
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::COMPUTE,
+                        ty: BindingType::Buffer {
+                            ty: BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
             });
 
         // Create the layout for the main compute output texture
@@ -183,7 +197,8 @@ pub struct MainComputeBindGroupsContainer {
     pub output_texture: Texture,
     pub output_texture_buffer: Buffer,
 
-    circular_index: UCircularIndex,
+    starting_temporal_index: UCircularIndex,
+    pub starting_temporal_index_buffer: Buffer,
 }
 
 impl MainComputeBindGroupsContainer {
@@ -194,6 +209,7 @@ impl MainComputeBindGroupsContainer {
         height: u32,
         starting_texture: &[u8],
         textures: &[Vec<u8>],
+        starting_temporal_index: usize,
         queue: &Queue,
     ) -> Self {
         let texture_dimensions = Extent3d {
@@ -281,7 +297,12 @@ impl MainComputeBindGroupsContainer {
         };
 
         // Create the bind groups
-        let (start_texture_bind_group, temporal_textures_bind_group, output_texture_bind_group) = {
+        let (
+            start_texture_bind_group,
+            starting_temporal_index_buffer,
+            temporal_textures_bind_group,
+            output_texture_bind_group,
+        ) = {
             let start_texture_bind_group = device.create_bind_group(&BindGroupDescriptor {
                 label: Some("main compute start texture bind group"),
                 layout: &main_bind_group_layouts.start_texture_bind_group_layout,
@@ -293,14 +314,26 @@ impl MainComputeBindGroupsContainer {
                 }],
             });
 
+            let starting_temporal_index_buffer = device.create_buffer_init(&BufferInitDescriptor {
+                label: Some("temporal index buffer"),
+                contents: bytemuck::cast_slice(&[starting_temporal_index]),
+                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            });
+
             let temporal_view_refs: Vec<_> = temporal_views.iter().collect();
             let temporal_textures_bind_group = device.create_bind_group(&BindGroupDescriptor {
                 label: Some("main compute temporal texture bind group"),
                 layout: &main_bind_group_layouts.temporal_textures_bind_group_layout,
-                entries: &[BindGroupEntry {
-                    binding: 0,
-                    resource: BindingResource::TextureViewArray(&temporal_view_refs),
-                }],
+                entries: &[
+                    BindGroupEntry {
+                        binding: 0,
+                        resource: BindingResource::TextureViewArray(&temporal_view_refs),
+                    },
+                    BindGroupEntry {
+                        binding: 1,
+                        resource: starting_temporal_index_buffer.as_entire_binding(),
+                    },
+                ],
             });
 
             let output_texture_bind_group = device.create_bind_group(&BindGroupDescriptor {
@@ -316,6 +349,7 @@ impl MainComputeBindGroupsContainer {
 
             (
                 start_texture_bind_group,
+                starting_temporal_index_buffer,
                 temporal_textures_bind_group,
                 output_texture_bind_group,
             )
@@ -334,7 +368,8 @@ impl MainComputeBindGroupsContainer {
             output_texture,
             output_texture_buffer,
 
-            circular_index: UCircularIndex::new(0, TEMPORAL_BUFFER_SIZE),
+            starting_temporal_index: UCircularIndex::new(0, TEMPORAL_BUFFER_SIZE),
+            starting_temporal_index_buffer,
         }
     }
 
@@ -371,7 +406,7 @@ impl MainComputeBindGroupsContainer {
 
     pub fn update_temporal_texture(&mut self, input_texture: &[u8], queue: &Queue) {
         queue.write_texture(
-            self.temporal_textures[*self.circular_index.as_ref()].as_image_copy(),
+            self.temporal_textures[*self.starting_temporal_index.as_ref()].as_image_copy(),
             input_texture,
             TexelCopyBufferLayout {
                 offset: 0,
@@ -381,7 +416,14 @@ impl MainComputeBindGroupsContainer {
             self.texture_dimensions,
         );
 
-        self.circular_index += 1;
+        // Write the temporal array index that has been changed
+        queue.write_buffer(
+            &self.starting_temporal_index_buffer,
+            0,
+            bytemuck::cast_slice(&[*self.starting_temporal_index.as_ref()]),
+        );
+
+        self.starting_temporal_index += 1;
     }
 }
 

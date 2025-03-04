@@ -193,7 +193,7 @@ pub fn create_video_frame_decoder_pipeline(
                         // This is needed to pass on the eos signal from the filesrc
                         .eos(move |_appsink| {
                             if let Ok(appsrc) = eos_app_src_clone.lock() {
-                                appsrc.end_of_stream().expect("Faile to send EOS");
+                                appsrc.end_of_stream().expect("Failed to send EOS");
                             }
                         })
                         .new_sample(move |appsink| {

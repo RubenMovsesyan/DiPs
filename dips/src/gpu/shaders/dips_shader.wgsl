@@ -2,7 +2,10 @@
 var start_texture: texture_storage_2d<rgba8unorm, read>;
 
 @group(1) @binding(0)
-var temporal_texture_array: binding_array<texture_storage_2d<rgba8unorm, read> >;
+var temporal_texture_array: binding_array<texture_storage_2d<rgba8unorm, read_write> >;
+
+@group(1) @binding(1)
+var<uniform> starting_index: u32;
 
 @group(2) @binding(0)
 var output_texture: texture_storage_2d<rgba8unorm, write>;
@@ -54,7 +57,7 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> vec3<f32> {
 
 /// Takes in the coordinates of the pixel and returns the spatial median filter
 /// color of that pixel with the set WINDOW_SIZE
-fn spatial_median_filter(coords: vec2<u32>, dimensions: vec2<u32>, input_texture: texture_storage_2d<rgba8unorm, read>) -> vec4<f32> {
+fn spatial_median_filter(coords: vec2<u32>, dimensions: vec2<u32>, input_texture: texture_storage_2d<rgba8unorm, read_write>) -> vec4<f32> {
     var median_array: array<vec4<f32>, WIN_SIZE_SQUARE>;
     let win_size_2 = WINDOW_SIZE / 2;
 
@@ -110,10 +113,14 @@ fn compute_main(
 
 
     var median_array: array<f32, MEDIAN_ARRAY_SIZE>;
-    median_array[0] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[0]));
-    median_array[1] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[1]));
-    median_array[2] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[2]));
-    median_array[3] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[3]));
+
+    // Apply the spatial filter to the texture that has been changed for future reference
+    textureStore(temporal_texture_array[starting_index], coords.xy, spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[starting_index]));
+   
+    // Fill the median array with the values from all the spatially filtered textures
+    for (var i = 0; i < MEDIAN_ARRAY_SIZE; i++) {
+        median_array[i] = get_intensity(textureLoad(temporal_texture_array[i], coords.xy));
+    }
 
     // Sort the temporl texture array
     for (var i = 0; i < MEDIAN_ARRAY_SIZE; i++) {
