@@ -17,6 +17,41 @@ const WINDOW_SIZE: i32 = 3;
 const WIN_SIZE_SQUARE = WINDOW_SIZE * WINDOW_SIZE;
 
 // helper funcitons
+
+fn diff_to_color(diff: f32) -> vec3<f32> {
+    if (diff < 0) {
+        return hsl_to_rgb(0.0, 0.5, abs(diff));
+    }
+
+    return hsl_to_rgb(120.0, 0.5, diff);
+}
+
+
+// h must be between 0 and 360
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> vec3<f32> {
+    let chroma = s * (1 - abs(2 * l - 1));
+    let h_prime = h / 60.0;
+    let x = chroma * (1 - abs(h_prime % 2.0 - 1));
+
+    let m = l - chroma / 2.0;
+
+    if (h_prime >= 0 && h_prime < 1) {
+        return vec3<f32>(chroma + m, x + m, 0.0 + m);
+    } else if (h_prime >= 1 && h_prime < 2) {
+        return vec3<f32>(x + m, chroma + m, 0.0 + m);
+    } else if (h_prime >= 2 && h_prime < 3) {
+        return vec3<f32>(0.0 + m, chroma + m, x + m);
+    } else if (h_prime >= 3 && h_prime < 4) {
+        return vec3<f32>(0.0 + m, x + m, chroma + m);
+    } else if (h_prime >= 4 && h_prime < 5) {
+        return vec3<f32>(x + m, 0.0 + m, chroma + m);
+    } else if (h_prime >= 5 && h_prime <= 6) {
+        return vec3<f32>(chroma + m, 0.0 + m, x + m);
+    } else {
+        return vec3<f32>(0.0 + m, 0.0 + m, 0.0 + m);
+    } 
+}
+
 fn get_intensity(color: vec4<f32>) -> f32 {
     var c_max = max(color.r, color.g);
     c_max = max(c_max, color.b);
@@ -147,7 +182,8 @@ fn compute_main(
 
 
     diff = sigmoid_map(diff, -1.0, 1.0, -0.5, 0.5) * SENSITIVITY;
-    let new_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(diff, diff, diff);
+    // let new_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(diff, diff, diff);
+    let new_color = diff_to_color(diff);
     
     textureStore(output_texture, coords.xy, vec4<f32>(new_color.rgb, 1.0));
 }
