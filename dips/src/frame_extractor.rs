@@ -74,7 +74,13 @@ pub fn create_video_frame_decoder_pipeline(
 
     // GPU Compute
     let compute = Arc::new(RwLock::new(
-        ComputeState::new().expect("Could not create Compute State"),
+        ComputeState::new(
+            properties.colorize,
+            properties.spatial_window_size,
+            properties.sensitivity,
+            properties.filter_type,
+        )
+        .expect("Could not create Compute State"),
     ));
     let compute_closure_clone = compute.clone();
 

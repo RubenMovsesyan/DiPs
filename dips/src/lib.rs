@@ -22,10 +22,32 @@ use thumbnail_extractor::{
 // Type alias for the callback function
 type CallbackFunction = fn(u32, u32, &[u8], &mut ComputeState) -> Vec<u8>;
 
+#[derive(Copy, Clone, Debug)]
+pub enum DiPsFilter {
+    Unfiltered = 255,
+    Sigmoid = 0,
+    InverseSigmoid = 1,
+}
+
+impl Into<f64> for DiPsFilter {
+    fn into(self) -> f64 {
+        use DiPsFilter::*;
+        match self {
+            Unfiltered => 255.0,
+            Sigmoid => 0.0,
+            InverseSigmoid => 1.0,
+        }
+    }
+}
+
 pub struct DiPsProperties {
     video_path: Option<String>,
     frame_callback: Option<Arc<Mutex<CallbackFunction>>>,
     output_path: Option<String>,
+    pub colorize: bool,
+    pub spatial_window_size: i32,
+    pub sensitivity: f32,
+    pub filter_type: DiPsFilter,
 }
 
 impl DiPsProperties {
@@ -34,6 +56,10 @@ impl DiPsProperties {
             video_path: None,
             frame_callback: None,
             output_path: None,
+            colorize: false,
+            spatial_window_size: 1,
+            sensitivity: 5.0,
+            filter_type: DiPsFilter::Unfiltered,
         }
     }
 
@@ -64,6 +90,34 @@ impl DiPsProperties {
         self
     }
 
+    /// Sets the colorize parameter of DiPs
+    pub fn colorize(&mut self, colorize: bool) -> &mut Self {
+        self.colorize = colorize;
+
+        self
+    }
+
+    /// Sets the spatial window size parameter of DiPs
+    pub fn spatial_window_size(&mut self, spatial_window_size: i32) -> &mut Self {
+        self.spatial_window_size = spatial_window_size;
+
+        self
+    }
+
+    /// Sets the sensitivity parameter of DiPs
+    pub fn sensitivity(&mut self, sensitivity: f32) -> &mut Self {
+        self.sensitivity = sensitivity;
+
+        self
+    }
+
+    /// Sets the filter type parameter of DiPs
+    pub fn filter_type(&mut self, filter_type: DiPsFilter) -> &mut Self {
+        self.filter_type = filter_type;
+
+        self
+    }
+
     pub fn get_video_path(&self) -> Option<&String> {
         self.video_path.as_ref()
     }
@@ -77,6 +131,10 @@ impl DiPsProperties {
             video_path: self.video_path.clone(),
             frame_callback: self.frame_callback.clone(),
             output_path: self.output_path.clone(),
+            colorize: self.colorize.clone(),
+            spatial_window_size: self.spatial_window_size.clone(),
+            sensitivity: self.sensitivity.clone(),
+            filter_type: self.filter_type.clone(),
         }
     }
 }
