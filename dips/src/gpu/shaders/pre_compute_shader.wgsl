@@ -4,7 +4,7 @@ var start_texture_array: binding_array<texture_storage_2d<rgba8unorm, read> >;
 @group(1) @binding(0)
 var output_texture: texture_storage_2d<rgba8unorm, write>;
 
-const SENSITIVITY: f32 = 3.0;
+const SENSITIVITY: f32 = 2.0;
 const MEDIAN_ARRAY_SIZE: i32 = 4;
 
 const WINDOW_SIZE: i32 = 3;
