@@ -1,18 +1,66 @@
-import { Button, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, CheckBox, SpinBox, Slider, ComboBox } from "std-widgets.slint";
 
 
 export component MainWindow inherits Window {
-    width: 640px;
-    height: 480px;
+    width: 1280px;
+    height: 720px;
 
     callback find_input_path() -> string;
     callback get_thumbnail(string) -> image;
-    callback run_dips(string);
+    callback run_dips(string, bool, int, float, int);
 
     VerticalBox {
         thumbnail := Image {}
         path := Text {
             text: "Choose an input file";
+        }
+        dips_options := VerticalBox {
+            dips_options_label := Text {
+                text: "DiPs Options";
+            }
+            colorize := CheckBox {
+                text: "Colorize";
+                checked: false;
+            }
+            spatial_filter_size_container := VerticalBox {
+                spatial_filter_size_label := Text {
+                    text: "Spatial Filter Size";
+                }
+                spatial_filter_size := HorizontalBox {
+                    spatial_filter_picker := SpinBox {
+                        value: 1;
+                        step-size: 2;
+                        minimum: 1;
+                        maximum: 5;
+                    }
+                }
+            }
+            sensitivity_container := VerticalBox {
+                sensitivity_label := Text {
+                    text: "Sensitivity";
+                }
+                sensitivity := VerticalBox {
+                    sensitivity_slider := Slider {
+                        value: 5;
+                        step: 1;
+                        minimum: 1;
+                        maximum: 100; // Might change this later
+                    }
+                    sensitivity_slider_value := Text {
+                        text: sensitivity_slider.value;
+                    }
+                }
+            }
+            filter_type_container := VerticalBox {
+                filter_type_label := Text {
+                    text: "Filter Type";
+                }
+                filter_type := ComboBox {
+                    model: ["Unfiltered", "Sigmoid", "Inverse Sigmoid"];
+                    current-index: 0;
+                }
+            }
+
         }
         HorizontalBox {
             Button {
@@ -25,28 +73,15 @@ export component MainWindow inherits Window {
             Button {
                 text: "Run";
                 clicked => {
-                    root.run_dips(path.text);
+                    root.run_dips(
+                        path.text, 
+                        colorize.checked, 
+                        spatial_filter_picker.value,
+                        sensitivity_slider.value,
+                        filter_type.current-index - 1,
+                        );
                 }
             }
         }
     }
-
-    
-    // VerticalBox {
-    //     label := Text {
-    //         text: "Input Not Specified";
-    //     }
-    //     Button {
-    //         text: "Input";
-    //         clicked => {
-    //             label.text = root.find_input_path();
-    //         }
-    //     }
-    //     Button {
-    //         text: "Run";
-    //         clicked => {
-    //             root.run_dips(label.text);
-    //         }
-    //     }
-    // }
 }

@@ -4,11 +4,16 @@ var start_texture_array: binding_array<texture_storage_2d<rgba8unorm, read> >;
 @group(1) @binding(0)
 var output_texture: texture_storage_2d<rgba8unorm, write>;
 
+
+// Compiled constants
+@id(1) override WINDOW_SIZE: i32 = 3;
+
+override WIN_SIZE_SQUARE: i32 = WINDOW_SIZE * WINDOW_SIZE;
+
 const SENSITIVITY: f32 = 2.0;
 const MEDIAN_ARRAY_SIZE: i32 = 4;
 
-const WINDOW_SIZE: i32 = 3;
-const WIN_SIZE_SQUARE = WINDOW_SIZE * WINDOW_SIZE;
+const MAX_WIN_SIZE_SQUARE = 11 * 11;
 
 // helper funcitons
 fn get_intensity(color: vec4<f32>) -> f32 {
@@ -26,7 +31,13 @@ fn get_intensity(color: vec4<f32>) -> f32 {
 /// Takes in the coordinates of the pixel and returns the spatial median filter
 /// color of that pixel with the set WINDOW_SIZE
 fn spatial_median_filter(coords: vec2<u32>, dimensions: vec2<u32>, input_texture: texture_storage_2d<rgba8unorm, read>) -> vec4<f32> {
-    var median_array: array<vec4<f32>, WIN_SIZE_SQUARE>;
+    if (WINDOW_SIZE == 1) {
+        let intensity = get_intensity(textureLoad(input_texture, coords.xy));
+        return vec4<f32>(intensity, intensity, intensity, 1.0);
+    }
+
+    
+    var median_array: array<vec4<f32>, MAX_WIN_SIZE_SQUARE>;
     let win_size_2 = WINDOW_SIZE / 2;
 
     for (var i = -win_size_2; i < win_size_2; i++) {
@@ -81,14 +92,10 @@ fn pre_compute_main(
 
     // Find the temporal median of the start textures
     var start_median_array: array<f32, MEDIAN_ARRAY_SIZE>;
-    // start_median_array[0] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[0]));
-    // start_median_array[1] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[1]));
-    // start_median_array[2] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[2]));
-    // start_median_array[3] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[3]));
-    start_median_array[0] = get_intensity(textureLoad(start_texture_array[0], coords.xy));
-    start_median_array[1] = get_intensity(textureLoad(start_texture_array[1], coords.xy));
-    start_median_array[2] = get_intensity(textureLoad(start_texture_array[2], coords.xy));
-    start_median_array[3] = get_intensity(textureLoad(start_texture_array[3], coords.xy));
+    start_median_array[0] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[0]));
+    start_median_array[1] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[1]));
+    start_median_array[2] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[2]));
+    start_median_array[3] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[3]));
 
     // Sort the start median array
     for (var i = 0; i < MEDIAN_ARRAY_SIZE; i++) {

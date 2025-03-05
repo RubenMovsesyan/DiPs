@@ -10,20 +10,28 @@ var<uniform> starting_index: u32;
 @group(2) @binding(0)
 var output_texture: texture_storage_2d<rgba8unorm, write>;
 
+
+// Compiled constants
+@id(0) override COLORIZE: bool = true;
+@id(1) override WINDOW_SIZE: i32 = 3;
+@id(2) override SIGMOID_HORIZONTAL_SCALAR: f32 = 5.0;
+// 0 = Sigmoid
+// 1 = Inverse Sigmoid
+@id(3) override FILTER_TYPE: u32 = 0;
+
+override WIN_SIZE_SQUARE = WINDOW_SIZE * WINDOW_SIZE;
+
 const SENSITIVITY: f32 = 5.0;
 const MEDIAN_ARRAY_SIZE: i32 = 4;
-
-const WINDOW_SIZE: i32 = 3;
-const WIN_SIZE_SQUARE = WINDOW_SIZE * WINDOW_SIZE;
+const MAX_WIN_SIZE_SQUARE = 11 * 11;
 
 // helper funcitons
-
 fn diff_to_color(diff: f32) -> vec3<f32> {
     if (diff < 0) {
-        return hsl_to_rgb(0.0, 0.5, abs(diff));
+        return hsl_to_rgb(0.0, abs(diff), 0.5);
     }
 
-    return hsl_to_rgb(120.0, 0.5, diff);
+    return hsl_to_rgb(120.0, diff, 0.5);
 }
 
 
@@ -74,10 +82,19 @@ fn sigmoid_map(
     output_max: f32,
 ) -> f32 {
     let sig_input = input * ((output_max - output_min) / (input_max - input_min));
-    return inv_sigmoid(sig_input);
+    return sigmoid(sig_input);
 }
 
-const SIGMOID_HORIZONTAL_SCALAR: f32 = 5.0;
+fn map(
+    input: f32,
+    input_min: f32,
+    input_max: f32,
+    output_min: f32,
+    output_max: f32,
+) -> f32 {
+    return input * ((output_max - output_min) / (input_max - input_min));
+}
+
 
 fn sigmoid(
     input: f32,
@@ -94,7 +111,13 @@ fn inv_sigmoid(
 /// Takes in the coordinates of the pixel and returns the spatial median filter
 /// color of that pixel with the set WINDOW_SIZE
 fn spatial_median_filter(coords: vec2<u32>, dimensions: vec2<u32>, input_texture: texture_storage_2d<rgba8unorm, read_write>) -> vec4<f32> {
-    var median_array: array<f32, WIN_SIZE_SQUARE>;
+    if (WINDOW_SIZE == 1) {
+        let intensity = get_intensity(textureLoad(input_texture, coords.xy));
+        return vec4<f32>(intensity, intensity, intensity, 1.0);
+    }
+
+    
+    var median_array: array<f32, MAX_WIN_SIZE_SQUARE>;
     let win_size_2 = WINDOW_SIZE / 2;
 
     for (var i = -win_size_2; i < win_size_2; i++) {
@@ -182,9 +205,28 @@ fn compute_main(
     var diff = (original_intensity - median_array[MEDIAN_ARRAY_SIZE / 2]);
 
 
-    diff = sigmoid_map(diff, -1.0, 1.0, -0.5, 0.5) * SENSITIVITY;
-    // let new_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(diff, diff, diff);
-    let new_color = diff_to_color(diff);
+    // diff = sigmoid_map(diff, -1.0, 1.0, -0.5, 0.5) * SENSITIVITY;
+    diff = map(diff, -1.0, 1.0, -0.5, 0.5);
+
+    switch FILTER_TYPE {
+        case 0u: {
+            diff = sigmoid(diff);
+        }
+        case 1u: {
+            diff = inv_sigmoid(diff);
+        }
+        default: {}
+    }
+
+    diff *= SENSITIVITY;
+    
+    var new_color: vec3<f32>;
+
+    if (COLORIZE == true) {
+        new_color = diff_to_color(diff);
+    } else {
+        new_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(diff, diff, diff);
+    }
     
     textureStore(output_texture, coords.xy, vec4<f32>(new_color.rgb, 1.0));
 }

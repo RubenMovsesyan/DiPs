@@ -8,7 +8,7 @@ use native_dialog::FileDialog;
 use slint::SharedString;
 use std::fs;
 
-use dips::{self, DiPsProperties};
+use dips::{self, DiPsFilter, DiPsProperties};
 
 fn get_thumbnail(path: &str) -> slint::Image {
     // Store a thumbnail of the input video
@@ -60,41 +60,34 @@ fn main() -> Result<(), slint::PlatformError> {
 
     main_window.on_find_input_path(move || get_input_path());
     main_window.on_get_thumbnail(move |path| get_thumbnail(&path.to_string()));
-    main_window.on_run_dips(move |path| {
-        let output_path = FileDialog::new().show_save_single_file().unwrap();
+    main_window.on_run_dips(
+        move |path, colorize, spatial_size, sensitivity, filter_type| {
+            let output_path = FileDialog::new().show_save_single_file().unwrap();
 
-        let output_path = match output_path {
-            Some(o_path) => String::from(o_path.to_str().unwrap()),
-            None => String::from(""),
-        };
+            let output_path = match output_path {
+                Some(o_path) => String::from(o_path.to_str().unwrap()),
+                None => String::from(""),
+            };
 
-        dips::init_frame_extractor();
-        let mut dips_properties = DiPsProperties::new()
-            .video_path(path.as_str())
-            .output_path(output_path)
-            .build();
+            dips::init_frame_extractor();
+            let filter = match filter_type {
+                0 => DiPsFilter::Sigmoid,
+                1 => DiPsFilter::InverseSigmoid,
+                _ => DiPsFilter::Unfiltered,
+            };
 
-        dips::perform_dips(&mut dips_properties);
-    });
+            let mut dips_properties = DiPsProperties::new()
+                .video_path(path.as_str())
+                .output_path(output_path)
+                .colorize(colorize)
+                .spatial_window_size(spatial_size)
+                .sensitivity(sensitivity)
+                .filter_type(filter)
+                .build();
+
+            dips::perform_dips(&mut dips_properties);
+        },
+    );
 
     main_window.run()
 }
-
-// fn main() {
-//     pretty_env_logger::init();
-//     dips::init_thumbnail_extractor();
-
-//     dips::extract_thumbnail(
-//         "test_files/diffraction_short_new.avi",
-//         "test_files/output.jpeg",
-//     );
-
-//     dips::init_frame_extractor();
-
-//     let mut dips_properties = DiPsProperties::new()
-//         .video_path("test_files/diffraction_short_new.avi")
-//         .output_path("test_files/output_diff.avi")
-//         .build();
-
-//     dips::perform_dips(&mut dips_properties);
-// }

@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use bind_groups::{MainComputeBindGroups, PreComputeBindGroups};
 use log::*;
@@ -10,6 +10,8 @@ use wgpu::{
     Queue, RequestAdapterOptionsBase, TexelCopyBufferInfo, TexelCopyBufferLayout,
     TexelCopyTextureInfo, TextureAspect, include_wgsl,
 };
+
+use crate::DiPsFilter;
 
 mod bind_groups;
 
@@ -54,7 +56,12 @@ pub struct ComputeState {
 }
 
 impl ComputeState {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(
+        colorize: bool,
+        spatial_window_size: i32,
+        sensitivity: f32,
+        filter_type: DiPsFilter,
+    ) -> anyhow::Result<Self> {
         let instance = Instance::new(&InstanceDescriptor {
             backends: Backends::all(),
             ..Default::default()
@@ -89,6 +96,16 @@ impl ComputeState {
             )
             .block_on()?;
 
+        // These are the pipeline overrides to use
+        let pipeline_compilation_options = {
+            let mut hm = HashMap::new();
+            hm.insert(String::from("0"), if colorize { 1.0 } else { 0.0 });
+            hm.insert(String::from("1"), spatial_window_size as f64);
+            hm.insert(String::from("2"), sensitivity as f64);
+            hm.insert(String::from("3"), filter_type.into());
+            hm
+        };
+
         // Create the pre compute pipeline
         let (pre_compute_bind_groups, pre_compute_pipeline) = {
             let shader =
@@ -101,7 +118,10 @@ impl ComputeState {
                 layout: Some(pre_compute_bind_groups.pipeline_layout().as_ref().unwrap()), // WARN need to handle if None
                 module: &shader,
                 entry_point: Some("pre_compute_main"),
-                compilation_options: PipelineCompilationOptions::default(),
+                compilation_options: PipelineCompilationOptions {
+                    constants: &pipeline_compilation_options,
+                    ..Default::default()
+                },
                 cache: None,
             });
 
@@ -119,7 +139,10 @@ impl ComputeState {
                 layout: Some(&bind_groups_container.pipeline_layout().as_ref().unwrap()), // WARN need to handle if None
                 module: &shader,
                 entry_point: Some("compute_main"),
-                compilation_options: PipelineCompilationOptions::default(),
+                compilation_options: PipelineCompilationOptions {
+                    constants: &pipeline_compilation_options,
+                    ..Default::default()
+                },
                 cache: None,
             });
 
