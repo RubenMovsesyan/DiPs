@@ -81,10 +81,14 @@ fn pre_compute_main(
 
     // Find the temporal median of the start textures
     var start_median_array: array<f32, MEDIAN_ARRAY_SIZE>;
-    start_median_array[0] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[0]));
-    start_median_array[1] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[1]));
-    start_median_array[2] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[2]));
-    start_median_array[3] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[3]));
+    // start_median_array[0] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[0]));
+    // start_median_array[1] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[1]));
+    // start_median_array[2] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[2]));
+    // start_median_array[3] = get_intensity(spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[3]));
+    start_median_array[0] = get_intensity(textureLoad(start_texture_array[0], coords.xy));
+    start_median_array[1] = get_intensity(textureLoad(start_texture_array[1], coords.xy));
+    start_median_array[2] = get_intensity(textureLoad(start_texture_array[2], coords.xy));
+    start_median_array[3] = get_intensity(textureLoad(start_texture_array[3], coords.xy));
 
     // Sort the start median array
     for (var i = 0; i < MEDIAN_ARRAY_SIZE; i++) {

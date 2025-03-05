@@ -152,7 +152,8 @@ fn compute_main(
     var median_array: array<f32, MEDIAN_ARRAY_SIZE>;
 
     // Apply the spatial filter to the texture that has been changed for future reference
-    textureStore(temporal_texture_array[starting_index], coords.xy, spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[starting_index]));
+    // textureStore(temporal_texture_array[starting_index], coords.xy, spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[starting_index]));
+    textureStore(temporal_texture_array[starting_index], coords.xy, textureLoad(temporal_texture_array[starting_index], coords.xy));
    
     // Fill the median array with the values from all the spatially filtered textures
     for (var i = 0; i < MEDIAN_ARRAY_SIZE; i++) {
