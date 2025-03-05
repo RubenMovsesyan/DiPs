@@ -36,7 +36,7 @@ fn spatial_median_filter(coords: vec2<u32>, dimensions: vec2<u32>, input_texture
                 color = 0.0;
             } else {
                 // color = get_intensity(textureLoad(input_texture, vec2<u32>(u32(i32(coords.x) + i), u32(i32(coords.y) + j))).rrra);
-                color = textureLoad(input_texture, vec2<u32>(u32(i32(coords.x) + i), u32(i32(coords.y) + j))).r;
+                color = textureLoad(input_texture, vec2<u32>(u32(i32(coords.x) + i), u32(i32(coords.y) + j))).g;
             }
 
             let array_i = i + win_size_2;
@@ -83,10 +83,10 @@ fn pre_compute_main(
 
     // Find the temporal median of the start textures
     var start_median_array: array<f32, MEDIAN_ARRAY_SIZE>;
-    start_median_array[0] = spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[0]).r;
-    start_median_array[1] = spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[1]).r;
-    start_median_array[2] = spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[2]).r;
-    start_median_array[3] = spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[3]).r;
+    start_median_array[0] = spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[0]).g;
+    start_median_array[1] = spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[1]).g;
+    start_median_array[2] = spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[2]).g;
+    start_median_array[3] = spatial_median_filter(coords.xy, dimensions.xy, start_texture_array[3]).g;
 
     // Sort the start median array
     for (var i = 0; i < MEDIAN_ARRAY_SIZE; i++) {
