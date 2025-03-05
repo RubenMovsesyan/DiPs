@@ -10,7 +10,7 @@ var<uniform> starting_index: u32;
 @group(2) @binding(0)
 var output_texture: texture_storage_2d<rgba8unorm, write>;
 
-const SENSITIVITY: f32 = 3.0;
+const SENSITIVITY: f32 = 5.0;
 const MEDIAN_ARRAY_SIZE: i32 = 4;
 
 const WINDOW_SIZE: i32 = 3;
@@ -27,6 +27,33 @@ fn get_intensity(color: vec4<f32>) -> f32 {
     let luminance = (c_max + c_min) / 2.0;
 
     return luminance;
+}
+
+// Maps in input range to a sigmoid function in the output range
+// specified
+fn sigmoid_map(
+    input: f32,
+    input_min: f32,
+    input_max: f32,
+    output_min: f32,
+    output_max: f32,
+) -> f32 {
+    let sig_input = input * ((output_max - output_min) / (input_max - input_min));
+    return inv_sigmoid(sig_input);
+}
+
+const SIGMOID_HORIZONTAL_SCALAR: f32 = 5.0;
+
+fn sigmoid(
+    input: f32,
+) -> f32 {
+    return 1.0 / (1.0 + exp(-SIGMOID_HORIZONTAL_SCALAR * input)) - 0.5;
+}
+
+fn inv_sigmoid(
+    input: f32,
+) -> f32 {
+    return (-log((1.0 / (input + 0.5)) - 1)) / SIGMOID_HORIZONTAL_SCALAR;
 }
 
 /// Takes in the coordinates of the pixel and returns the spatial median filter
@@ -116,10 +143,10 @@ fn compute_main(
     }
     
     let original_intensity = textureLoad(start_texture, coords.xy).r;
-    // let diff = (((original_intensity - get_intensity(median_array[MEDIAN_ARRAY_SIZE / 2])) * SENSITIVITY) + SENSITIVITY) % SENSITIVITY;
-    let diff = (original_intensity - median_array[MEDIAN_ARRAY_SIZE / 2]) * SENSITIVITY;
+    var diff = (original_intensity - median_array[MEDIAN_ARRAY_SIZE / 2]);
 
-    // let new_color = hsl_to_rgb(diff, 1.0, 0.5);
+
+    diff = sigmoid_map(diff, -1.0, 1.0, -0.5, 0.5) * SENSITIVITY;
     let new_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(diff, diff, diff);
     
     textureStore(output_texture, coords.xy, vec4<f32>(new_color.rgb, 1.0));
