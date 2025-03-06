@@ -8,7 +8,7 @@ use native_dialog::FileDialog;
 use slint::SharedString;
 use std::fs;
 
-use dips::{self, DiPsFilter, DiPsProperties};
+use dips::{self, ChromaFilter, DiPsFilter, DiPsProperties};
 
 fn get_thumbnail(path: &str) -> slint::Image {
     // Store a thumbnail of the input video
@@ -61,7 +61,7 @@ fn main() -> Result<(), slint::PlatformError> {
     main_window.on_find_input_path(move || get_input_path());
     main_window.on_get_thumbnail(move |path| get_thumbnail(&path.to_string()));
     main_window.on_run_dips(
-        move |path, colorize, spatial_size, sensitivity, filter_type| {
+        move |path, colorize, spatial_size, sensitivity, filter_type, chroma_filter| {
             let output_path = FileDialog::new().show_save_single_file().unwrap();
 
             let output_path = match output_path {
@@ -70,19 +70,23 @@ fn main() -> Result<(), slint::PlatformError> {
             };
 
             dips::init_frame_extractor();
-            let filter = match filter_type {
-                0 => DiPsFilter::Sigmoid,
-                1 => DiPsFilter::InverseSigmoid,
-                _ => DiPsFilter::Unfiltered,
-            };
-
             let mut dips_properties = DiPsProperties::new()
                 .video_path(path.as_str())
                 .output_path(output_path)
                 .colorize(colorize)
                 .spatial_window_size(spatial_size)
                 .sensitivity(sensitivity)
-                .filter_type(filter)
+                .filter_type(match filter_type {
+                    0 => DiPsFilter::Sigmoid,
+                    1 => DiPsFilter::InverseSigmoid,
+                    _ => DiPsFilter::Unfiltered,
+                })
+                .chroma_filter(match chroma_filter {
+                    1 => ChromaFilter::Red,
+                    2 => ChromaFilter::Green,
+                    3 => ChromaFilter::Blue,
+                    _ => ChromaFilter::None,
+                })
                 .build();
 
             dips::perform_dips(&mut dips_properties);

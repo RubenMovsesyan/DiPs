@@ -7,7 +7,7 @@ export component MainWindow inherits Window {
 
     callback find_input_path() -> string;
     callback get_thumbnail(string) -> image;
-    callback run_dips(string, bool, int, float, int);
+    callback run_dips(string, bool, int, float, int, int);
 
     VerticalBox {
         thumbnail := Image {}
@@ -60,7 +60,15 @@ export component MainWindow inherits Window {
                     current-index: 0;
                 }
             }
-
+            chroma_filter_container := VerticalBox {
+                chroma_filter_label := Text {
+                    text: "Chroma Filter";
+                }
+                chroma_filter := ComboBox {
+                    model: ["None", "Red", "Green", "Blue"];
+                    current-index: 0;
+                }
+            }
         }
         HorizontalBox {
             Button {
@@ -79,6 +87,7 @@ export component MainWindow inherits Window {
                         spatial_filter_picker.value,
                         sensitivity_slider.value,
                         filter_type.current-index - 1,
+                        chroma_filter.current-index,
                         );
                 }
             }

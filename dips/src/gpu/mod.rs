@@ -11,7 +11,7 @@ use wgpu::{
     TexelCopyTextureInfo, TextureAspect, include_wgsl,
 };
 
-use crate::DiPsFilter;
+use crate::{ChromaFilter, DiPsFilter};
 
 mod bind_groups;
 
@@ -61,6 +61,7 @@ impl ComputeState {
         spatial_window_size: i32,
         sensitivity: f32,
         filter_type: DiPsFilter,
+        chroma_filter: ChromaFilter,
     ) -> anyhow::Result<Self> {
         let instance = Instance::new(&InstanceDescriptor {
             backends: Backends::all(),
@@ -103,6 +104,7 @@ impl ComputeState {
             hm.insert(String::from("1"), spatial_window_size as f64);
             hm.insert(String::from("2"), sensitivity as f64);
             hm.insert(String::from("3"), filter_type.into());
+            hm.insert(String::from("4"), chroma_filter.into());
             hm
         };
 
