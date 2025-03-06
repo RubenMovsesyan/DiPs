@@ -5,6 +5,8 @@ export component MainWindow inherits Window {
     width: 1280px;
     height: 720px;
 
+    title: @tr("DiPs");
+
     callback find_input_path() -> string;
     callback get_thumbnail(string) -> image;
     callback run_dips(string, bool, string, float, int, int);

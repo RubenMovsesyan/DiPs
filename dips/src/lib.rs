@@ -249,10 +249,11 @@ pub fn init_frame_extractor() {
     initialize_frame_extractor();
 }
 
-pub fn perform_dips(properties: &mut DiPsProperties) {
+pub async fn perform_dips(mut properties: DiPsProperties) {
     properties.frame_callback(frame_callback);
 
-    _ = create_video_frame_decoder_pipeline(properties).and_then(|pipeline| run_pipeline(pipeline));
+    _ = create_video_frame_decoder_pipeline(&properties)
+        .and_then(|pipeline| run_pipeline(pipeline));
 }
 
 pub fn init_thumbnail_extractor() {

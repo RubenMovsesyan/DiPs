@@ -72,7 +72,7 @@ fn main() -> Result<(), slint::PlatformError> {
             };
 
             dips::init_frame_extractor();
-            let mut dips_properties = DiPsProperties::new()
+            let dips_properties = DiPsProperties::new()
                 .video_path(path.as_str())
                 .output_path(output_path)
                 .colorize(colorize)
@@ -95,7 +95,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 })
                 .build();
 
-            dips::perform_dips(&mut dips_properties);
+            smol::spawn(dips::perform_dips(dips_properties)).detach();
         },
     );
 
