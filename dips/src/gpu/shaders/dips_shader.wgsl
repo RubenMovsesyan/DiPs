@@ -18,6 +18,7 @@ var output_texture: texture_storage_2d<rgba8unorm, write>;
 // 0 = Sigmoid
 // 1 = Inverse Sigmoid
 @id(3) override FILTER_TYPE: u32 = 0;
+@id(4) override CHROMA_FILTER: u32 = 0;
 
 override WIN_SIZE_SQUARE = WINDOW_SIZE * WINDOW_SIZE;
 
@@ -61,6 +62,14 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> vec3<f32> {
 }
 
 fn get_intensity(color: vec4<f32>) -> f32 {
+    if (CHROMA_FILTER == 1) {
+        return color.r;
+    } else if (CHROMA_FILTER == 2) {
+        return color.g;
+    } else if (CHROMA_FILTER == 3) {
+        return color.b;
+    }
+
     var c_max = max(color.r, color.g);
     c_max = max(c_max, color.b);
 
@@ -175,8 +184,8 @@ fn compute_main(
     var median_array: array<f32, MEDIAN_ARRAY_SIZE>;
 
     // Apply the spatial filter to the texture that has been changed for future reference
-    // textureStore(temporal_texture_array[starting_index], coords.xy, spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[starting_index]));
-    textureStore(temporal_texture_array[starting_index], coords.xy, textureLoad(temporal_texture_array[starting_index], coords.xy));
+    textureStore(temporal_texture_array[starting_index], coords.xy, spatial_median_filter(coords.xy, dimensions.xy, temporal_texture_array[starting_index]));
+    // textureStore(temporal_texture_array[starting_index], coords.xy, textureLoad(temporal_texture_array[starting_index], coords.xy));
    
     // Fill the median array with the values from all the spatially filtered textures
     for (var i = 0; i < MEDIAN_ARRAY_SIZE; i++) {
@@ -205,7 +214,6 @@ fn compute_main(
     var diff = (original_intensity - median_array[MEDIAN_ARRAY_SIZE / 2]);
 
 
-    // diff = sigmoid_map(diff, -1.0, 1.0, -0.5, 0.5) * SENSITIVITY;
     diff = map(diff, -1.0, 1.0, -0.5, 0.5);
 
     switch FILTER_TYPE {

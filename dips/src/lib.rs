@@ -24,9 +24,9 @@ type CallbackFunction = fn(u32, u32, &[u8], &mut ComputeState) -> Vec<u8>;
 
 #[derive(Copy, Clone, Debug)]
 pub enum DiPsFilter {
-    Unfiltered = 255,
-    Sigmoid = 0,
-    InverseSigmoid = 1,
+    Unfiltered,
+    Sigmoid,
+    InverseSigmoid,
 }
 
 impl Into<f64> for DiPsFilter {
@@ -40,6 +40,26 @@ impl Into<f64> for DiPsFilter {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum ChromaFilter {
+    None,
+    Red,
+    Green,
+    Blue,
+}
+
+impl Into<f64> for ChromaFilter {
+    fn into(self) -> f64 {
+        use ChromaFilter::*;
+        match self {
+            None => 0.0,
+            Red => 1.0,
+            Green => 2.0,
+            Blue => 3.0,
+        }
+    }
+}
+
 pub struct DiPsProperties {
     video_path: Option<String>,
     frame_callback: Option<Arc<Mutex<CallbackFunction>>>,
@@ -48,6 +68,7 @@ pub struct DiPsProperties {
     pub spatial_window_size: i32,
     pub sensitivity: f32,
     pub filter_type: DiPsFilter,
+    pub chroma_filter: ChromaFilter,
 }
 
 impl DiPsProperties {
@@ -60,6 +81,7 @@ impl DiPsProperties {
             spatial_window_size: 1,
             sensitivity: 5.0,
             filter_type: DiPsFilter::Unfiltered,
+            chroma_filter: ChromaFilter::None,
         }
     }
 
@@ -118,6 +140,13 @@ impl DiPsProperties {
         self
     }
 
+    /// Sets the chroma filter parameter of DiPs
+    pub fn chroma_filter(&mut self, chroma_filter: ChromaFilter) -> &mut Self {
+        self.chroma_filter = chroma_filter;
+
+        self
+    }
+
     pub fn get_video_path(&self) -> Option<&String> {
         self.video_path.as_ref()
     }
@@ -135,6 +164,7 @@ impl DiPsProperties {
             spatial_window_size: self.spatial_window_size.clone(),
             sensitivity: self.sensitivity.clone(),
             filter_type: self.filter_type.clone(),
+            chroma_filter: self.chroma_filter.clone(),
         }
     }
 }
@@ -219,10 +249,11 @@ pub fn init_frame_extractor() {
     initialize_frame_extractor();
 }
 
-pub fn perform_dips(properties: &mut DiPsProperties) {
+pub async fn perform_dips(mut properties: DiPsProperties) {
     properties.frame_callback(frame_callback);
 
-    _ = create_video_frame_decoder_pipeline(properties).and_then(|pipeline| run_pipeline(pipeline));
+    _ = create_video_frame_decoder_pipeline(&properties)
+        .and_then(|pipeline| run_pipeline(pipeline));
 }
 
 pub fn init_thumbnail_extractor() {

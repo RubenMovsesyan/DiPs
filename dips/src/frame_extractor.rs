@@ -79,6 +79,7 @@ pub fn create_video_frame_decoder_pipeline(
             properties.spatial_window_size,
             properties.sensitivity,
             properties.filter_type,
+            properties.chroma_filter,
         )
         .expect("Could not create Compute State"),
     ));

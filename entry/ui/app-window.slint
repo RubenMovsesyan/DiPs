@@ -1,66 +1,81 @@
-import { Button, VerticalBox, HorizontalBox, CheckBox, SpinBox, Slider, ComboBox } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, CheckBox, Slider, ComboBox } from "std-widgets.slint";
 
 
 export component MainWindow inherits Window {
     width: 1280px;
     height: 720px;
 
+    title: @tr("DiPs");
+
     callback find_input_path() -> string;
     callback get_thumbnail(string) -> image;
-    callback run_dips(string, bool, int, float, int);
+    callback run_dips(string, bool, string, float, int, int);
 
     VerticalBox {
-        thumbnail := Image {}
-        path := Text {
-            text: "Choose an input file";
-        }
-        dips_options := VerticalBox {
-            dips_options_label := Text {
-                text: "DiPs Options";
-            }
-            colorize := CheckBox {
-                text: "Colorize";
-                checked: false;
-            }
-            spatial_filter_size_container := VerticalBox {
-                spatial_filter_size_label := Text {
-                    text: "Spatial Filter Size";
+        HorizontalBox {
+            min-height: 650px;
+            dips_options := VerticalBox {
+                alignment: start;
+                dips_options_label := Text {
+                    text: "DiPs Options";
                 }
-                spatial_filter_size := HorizontalBox {
-                    spatial_filter_picker := SpinBox {
-                        value: 1;
-                        step-size: 2;
-                        minimum: 1;
-                        maximum: 5;
+                colorize := CheckBox {
+                    text: "Colorize";
+                    checked: false;
+                }
+                spatial_filter_size_container := VerticalBox {
+                    spatial_filter_size_label := Text {
+                        text: "Spatial Filter Size";
+                    }
+                    spatial_filter_size := HorizontalBox {
+                        spatial_filter_picker := ComboBox {
+                            model: [1, 3, 5];
+                            current-index: 0;
+                        }
+                    }
+                }
+                sensitivity_container := VerticalBox {
+                    sensitivity_label := Text {
+                        text: "Sensitivity";
+                    }
+                    sensitivity := VerticalBox {
+                        sensitivity_slider := Slider {
+                            value: 5;
+                            step: 1;
+                            minimum: 0;
+                            maximum: 10;
+                        }
+                        sensitivity_slider_value := Text {
+                            text: sensitivity_slider.value;
+                        }
+                    }
+                }
+                filter_type_container := VerticalBox {
+                    filter_type_label := Text {
+                        text: "Filter Type";
+                    }
+                    filter_type := ComboBox {
+                        model: ["Unfiltered", "Sigmoid", "Inverse Sigmoid"];
+                        current-index: 0;
+                    }
+                }
+                chroma_filter_container := VerticalBox {
+                    chroma_filter_label := Text {
+                        text: "Chroma Filter";
+                    }
+                    chroma_filter := ComboBox {
+                        model: ["None", "Red", "Green", "Blue"];
+                        current-index: 0;
                     }
                 }
             }
-            sensitivity_container := VerticalBox {
-                sensitivity_label := Text {
-                    text: "Sensitivity";
-                }
-                sensitivity := VerticalBox {
-                    sensitivity_slider := Slider {
-                        value: 5;
-                        step: 1;
-                        minimum: 1;
-                        maximum: 100; // Might change this later
-                    }
-                    sensitivity_slider_value := Text {
-                        text: sensitivity_slider.value;
-                    }
+            VerticalBox {
+                min-width: 900px;
+                thumbnail := Image {}
+                path := Text {
+                    text: "Choose an input file";
                 }
             }
-            filter_type_container := VerticalBox {
-                filter_type_label := Text {
-                    text: "Filter Type";
-                }
-                filter_type := ComboBox {
-                    model: ["Unfiltered", "Sigmoid", "Inverse Sigmoid"];
-                    current-index: 0;
-                }
-            }
-
         }
         HorizontalBox {
             Button {
@@ -76,9 +91,10 @@ export component MainWindow inherits Window {
                     root.run_dips(
                         path.text, 
                         colorize.checked, 
-                        spatial_filter_picker.value,
+                        spatial_filter_picker.current-value,
                         sensitivity_slider.value,
                         filter_type.current-index - 1,
+                        chroma_filter.current-index,
                         );
                 }
             }
