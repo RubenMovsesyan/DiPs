@@ -10,6 +10,8 @@ use std::fs;
 
 use dips::{self, ChromaFilter, DiPsFilter, DiPsProperties};
 
+const SENSITIVITY_MAX: f32 = 10.0;
+
 fn get_thumbnail(path: &str) -> slint::Image {
     // Store a thumbnail of the input video
     if let Some(proj_dirs) = ProjectDirs::from("com", "Ruben", "DiPs") {
@@ -74,8 +76,12 @@ fn main() -> Result<(), slint::PlatformError> {
                 .video_path(path.as_str())
                 .output_path(output_path)
                 .colorize(colorize)
-                .spatial_window_size(spatial_size)
-                .sensitivity(sensitivity)
+                .spatial_window_size(match spatial_size.as_str() {
+                    "3" => 3,
+                    "5" => 5,
+                    _ => 1,
+                })
+                .sensitivity(SENSITIVITY_MAX - sensitivity)
                 .filter_type(match filter_type {
                     0 => DiPsFilter::Sigmoid,
                     1 => DiPsFilter::InverseSigmoid,
