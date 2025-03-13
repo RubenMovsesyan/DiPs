@@ -1,0 +1,7 @@
+[package]
+name = "opencv_tests"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dips_opencv = { path = "../dips_opencv" }

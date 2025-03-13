@@ -1,0 +1,13 @@
+[package]
+name = "dips_opencv"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.96"
+bytemuck = "1.22.0"
+image = "0.25.5"
+log = "0.4.25"
+opencv = { version = "0.94.2", features = ["clang-runtime"] }
+pollster = "0.4.0"
+wgpu = "24.0.1"
