@@ -1,6 +1,8 @@
 Video Frame <b style="color:Tomato;">Di</b>fference <b style="color:Tomato;">Pi</b>xel<b style="color:Tomato;">s</b> (DiPs)
 ===========================================================================================================================
 
+test
+
 This program is designed to find the differences in intesity of pixels in a video over time. This can be used for scientific
 purposes or for anything that might require seeing how pixels in a stream change overtime.
 
