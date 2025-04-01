@@ -1,0 +1,11 @@
+[package]
+name = "dips_alt"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.97"
+bytemuck = "1.22.0"
+opencv = { version = "0.94.3", features = ["clang-runtime"] }
+pollster = "0.4.0"
+wgpu = "24.0.3"

@@ -1,4 +1,4 @@
 [workspace]
 resolver = "2"
-members = ["dips", "dips_opencv", "entry", "opencv_tests"]
+members = ["dips", "dips_alt", "dips_opencv", "entry", "opencv_tests"]
 exclude = ["dips-app/src-tauri"]

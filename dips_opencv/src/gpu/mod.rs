@@ -81,21 +81,23 @@ impl ComputeState {
             error!("Texture Binding Array Not supported");
         }
 
-        let (device, queue) = adapter
+        let (device, queue) = match adapter
             .request_device(
                 &DeviceDescriptor {
                     label: Some("Device and queue"),
-                    required_features: Features::TEXTURE_BINDING_ARRAY
-                        | Features::STORAGE_RESOURCE_BINDING_ARRAY
-                        | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
-                        | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-                        | Features::UNIFORM_BUFFER_AND_STORAGE_TEXTURE_ARRAY_NON_UNIFORM_INDEXING,
+                    required_features: Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+                        | Features::TEXTURE_BINDING_ARRAY
+                        | Features::STORAGE_RESOURCE_BINDING_ARRAY,
                     required_limits: Limits::default(),
                     memory_hints: MemoryHints::default(),
                 },
                 None,
             )
-            .block_on()?;
+            .block_on()
+        {
+            Ok((device, queue)) => (device, queue),
+            Err(err) => panic!("Error: {:#?}", err),
+        };
 
         // These are the pipeline overrides to use
         let pipeline_compilation_options = {
