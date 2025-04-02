@@ -1,5 +1,7 @@
-use dips_alt::run_with_open_cv;
+use dips_alt::*;
 
 fn main() {
-    _ = run_with_open_cv();
+    pretty_env_logger::init();
+    // _ = run_with_open_cv();
+    run_dips_app();
 }

@@ -1,22 +1,25 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, rc::Rc, sync::Arc};
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use dynamic_texture_array::create_dynamic_bindings;
-use pollster::FutureExt;
 use wgpu::{
-    Backends, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
-    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, Buffer,
-    BufferBindingType, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
-    ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, Device, DeviceDescriptor,
-    Extent3d, Features, Instance, InstanceDescriptor, Limits, Maintain, MapMode, MemoryHints,
-    Origin3d, PipelineCompilationOptions, PipelineLayoutDescriptor, PowerPreference, Queue,
-    RequestAdapterOptionsBase, ShaderStages, StorageTextureAccess, TexelCopyBufferInfo,
-    TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor, TextureViewDimension,
+    AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
+    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
+    Buffer, BufferBindingType, BufferDescriptor, BufferUsages, Color, ColorTargetState,
+    ColorWrites, CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline,
+    ComputePipelineDescriptor, Device, Extent3d, Face, FilterMode, FragmentState, FrontFace,
+    LoadOp, Maintain, MapMode, MultisampleState, Operations, Origin3d, PipelineCompilationOptions,
+    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, Queue,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
+    SamplerBindingType, SamplerDescriptor, ShaderStages, StorageTextureAccess, StoreOp, Surface,
+    SurfaceConfiguration, TexelCopyBufferInfo, TexelCopyBufferLayout, TexelCopyTextureInfo,
+    Texture, TextureAspect, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType,
+    TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension, VertexState,
+    include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
-use crate::utils::indexing::UCircularIndex;
+use crate::{DiPsWindow, utils::indexing::UCircularIndex};
 
 mod dynamic_texture_array;
 
@@ -40,11 +43,125 @@ fn padded_bytes_per_row(width: u32) -> usize {
     bytes_per_row + padding
 }
 
+fn construct_render_pipeline(
+    device: Rc<Device>,
+    config: &SurfaceConfiguration,
+    output_texture: &TextureView,
+) -> (RenderPipeline, BindGroup) {
+    let sampler = device.create_sampler(&SamplerDescriptor {
+        label: Some("Output Texture Sampler"),
+        address_mode_u: AddressMode::ClampToEdge,
+        address_mode_v: AddressMode::ClampToEdge,
+        address_mode_w: AddressMode::ClampToEdge,
+        mag_filter: FilterMode::Nearest,
+        min_filter: FilterMode::Nearest,
+        mipmap_filter: FilterMode::Nearest,
+        ..Default::default()
+    });
+
+    let fragment_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+        label: Some("DiPs Renderer Bind Group layout"),
+        entries: &[
+            // Output from the compute pipeline
+            BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::FRAGMENT,
+                ty: BindingType::Texture {
+                    multisampled: false,
+                    sample_type: TextureSampleType::Float { filterable: false },
+                    view_dimension: TextureViewDimension::D2,
+                },
+                count: None,
+            },
+            // Output sampler
+            BindGroupLayoutEntry {
+                binding: 1,
+                visibility: ShaderStages::FRAGMENT,
+                ty: BindingType::Sampler(SamplerBindingType::NonFiltering),
+                count: None,
+            },
+        ],
+    });
+
+    let fragment_bind_group = device.create_bind_group(&BindGroupDescriptor {
+        label: Some("DiPs Renderer Bind Group"),
+        layout: &fragment_bind_group_layout,
+        entries: &[
+            BindGroupEntry {
+                binding: 0,
+                resource: BindingResource::TextureView(output_texture),
+            },
+            BindGroupEntry {
+                binding: 1,
+                resource: BindingResource::Sampler(&sampler),
+            },
+        ],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+        label: Some("DiPs Render Pipeline Layout"),
+        bind_group_layouts: &[&fragment_bind_group_layout],
+        push_constant_ranges: &[],
+    });
+
+    let shader_module = device.create_shader_module(include_wgsl!("shaders/render.wgsl"));
+
+    (
+        device.create_render_pipeline(&RenderPipelineDescriptor {
+            label: Some("DiPs Render Pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: VertexState {
+                module: &shader_module,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: PipelineCompilationOptions::default(),
+            },
+            fragment: Some(FragmentState {
+                module: &shader_module,
+                entry_point: Some("fs_main"),
+                targets: &[Some(ColorTargetState {
+                    format: config.format,
+                    blend: Some(BlendState::REPLACE),
+                    write_mask: ColorWrites::ALL,
+                })],
+                compilation_options: PipelineCompilationOptions::default(),
+            }),
+            primitive: PrimitiveState {
+                topology: PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: FrontFace::Ccw,
+                cull_mode: Some(Face::Back),
+                polygon_mode: PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        }),
+        fragment_bind_group,
+    )
+}
+
+#[derive(Debug)]
+struct Renderer {
+    surface: Arc<Surface<'static>>,
+    pipeline: RenderPipeline,
+    bind_group: BindGroup,
+}
+
 #[derive(Debug)]
 pub struct DiPsCompute {
     // WGPU
     device: Rc<Device>,
     queue: Rc<Queue>,
+
+    renderer: Option<Renderer>,
 
     // Compute pipeline for computing the inital texture through
     // the temporal filter
@@ -66,43 +183,14 @@ pub struct DiPsCompute {
 }
 
 impl DiPsCompute {
-    pub fn new(num_textures: usize, textures_width: u32, textures_height: u32) -> Result<Self> {
-        let instance = Instance::new(&InstanceDescriptor {
-            backends: Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter = instance
-            .request_adapter(&RequestAdapterOptionsBase {
-                power_preference: PowerPreference::HighPerformance,
-                force_fallback_adapter: false,
-                compatible_surface: None,
-            })
-            .block_on()
-            .ok_or(anyhow!("Couldn't create the adapter"))?;
-
-        let (device, queue) = match adapter
-            .request_device(
-                &DeviceDescriptor {
-                    label: Some("Device and Queue"),
-                    required_features: Features::TEXTURE_BINDING_ARRAY
-                        | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
-                    required_limits: Limits {
-                        max_bind_groups: 5,
-                        ..Default::default()
-                    },
-                    memory_hints: MemoryHints::default(),
-                },
-                None,
-            )
-            .block_on()
-        {
-            Ok((device, queue)) => (device, queue),
-            Err(err) => return Err(anyhow!(err)),
-        };
-
-        let (device, queue) = (Rc::new(device), Rc::new(queue));
-
+    pub fn new(
+        num_textures: usize,
+        textures_width: u32,
+        textures_height: u32,
+        dips_window: Option<&DiPsWindow>,
+        device: Rc<Device>,
+        queue: Rc<Queue>,
+    ) -> Result<Self> {
         let textures = (0..num_textures)
             .map(|i| {
                 let texture = device.create_texture(&TextureDescriptor {
@@ -178,7 +266,9 @@ impl DiPsCompute {
                 sample_count: 1,
                 dimension: TextureDimension::D2,
                 format: TextureFormat::Rgba8Unorm,
-                usage: TextureUsages::STORAGE_BINDING | TextureUsages::COPY_SRC,
+                usage: TextureUsages::STORAGE_BINDING
+                    | TextureUsages::COPY_SRC
+                    | TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
 
@@ -204,6 +294,7 @@ impl DiPsCompute {
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("Output Texture Bind Group Layout"),
                 entries: &[
+                    // Snapshot determiner binding
                     BindGroupLayoutEntry {
                         binding: 0,
                         visibility: ShaderStages::COMPUTE,
@@ -214,6 +305,7 @@ impl DiPsCompute {
                         },
                         count: None,
                     },
+                    // Snapshot texture
                     BindGroupLayoutEntry {
                         binding: 1,
                         visibility: ShaderStages::COMPUTE,
@@ -224,6 +316,7 @@ impl DiPsCompute {
                         },
                         count: None,
                     },
+                    // Output Texture
                     BindGroupLayoutEntry {
                         binding: 2,
                         visibility: ShaderStages::COMPUTE,
@@ -283,9 +376,26 @@ impl DiPsCompute {
             },
         });
 
+        let renderer = if let Some(dip_window) = dips_window {
+            let (pipeline, bind_group) = construct_render_pipeline(
+                device.clone(),
+                &dip_window.surface_config,
+                &output_texture_view,
+            );
+
+            Some(Renderer {
+                surface: dip_window.surface.clone(),
+                pipeline,
+                bind_group,
+            })
+        } else {
+            None
+        };
+
         Ok(Self {
             device,
             queue,
+            renderer,
             texture_array_bind_groups,
             pre_compute_pipeline,
             output_bind_group,
@@ -365,25 +475,59 @@ impl DiPsCompute {
         let unpadded_bytes_per_row =
             self.texture_dimensions.width * std::mem::size_of::<f32>() as u32;
 
-        encoder.copy_texture_to_buffer(
-            TexelCopyTextureInfo {
-                aspect: TextureAspect::All,
-                texture: &self.output_texture,
-                mip_level: 0,
-                origin: Origin3d::ZERO,
-            },
-            TexelCopyBufferInfo {
-                buffer: &self.output_buffer,
-                layout: TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(padded_bytes_per_row as u32),
-                    rows_per_image: Some(self.texture_dimensions.height as u32),
-                },
-            },
-            self.texture_dimensions,
-        );
+        // If we have a renderer attached then render to the screen
+        // otherwise just copy to the output buffer
+        if let Some(renderer) = self.renderer.as_ref() {
+            let output = renderer.surface.get_current_texture().unwrap();
+            let view = output
+                .texture
+                .create_view(&TextureViewDescriptor::default());
 
-        self.queue.submit(Some(encoder.finish()));
+            {
+                let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                    label: Some("DiPs Render Pass"),
+                    color_attachments: &[Some(RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: Operations {
+                            load: LoadOp::Clear(Color::BLUE),
+                            store: StoreOp::Store,
+                        },
+                    })],
+                    ..Default::default()
+                });
+
+                // Set the rendering pipeline
+                render_pass.set_pipeline(&renderer.pipeline);
+
+                // Set the bind group
+                render_pass.set_bind_group(0, &renderer.bind_group, &[]);
+
+                // Render to the screen
+                render_pass.draw(0..6, 0..1);
+            }
+            self.queue.submit(Some(encoder.finish()));
+            output.present();
+        } else {
+            encoder.copy_texture_to_buffer(
+                TexelCopyTextureInfo {
+                    aspect: TextureAspect::All,
+                    texture: &self.output_texture,
+                    mip_level: 0,
+                    origin: Origin3d::ZERO,
+                },
+                TexelCopyBufferInfo {
+                    buffer: &self.output_buffer,
+                    layout: TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(padded_bytes_per_row as u32),
+                        rows_per_image: Some(self.texture_dimensions.height as u32),
+                    },
+                },
+                self.texture_dimensions,
+            );
+            self.queue.submit(Some(encoder.finish()));
+        }
 
         if let Some(_) = snapshot {
             self.queue
