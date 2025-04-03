@@ -1,4 +1,4 @@
-use std::{fmt::Debug, rc::Rc, sync::Arc};
+use std::{fmt::Debug, rc::Rc};
 
 use egui::Context;
 use egui_wgpu::{Renderer, ScreenDescriptor};

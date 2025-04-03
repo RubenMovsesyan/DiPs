@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc, sync::Arc};
+use std::{collections::HashMap, rc::Rc};
 
 use anyhow::Result;
 use dynamic_texture_array::create_dynamic_bindings;
@@ -11,7 +11,7 @@ use wgpu::{
     LoadOp, Maintain, MapMode, MultisampleState, Operations, Origin3d, PipelineCompilationOptions,
     PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, Queue,
     RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    SamplerBindingType, SamplerDescriptor, ShaderStages, StorageTextureAccess, StoreOp, Surface,
+    SamplerBindingType, SamplerDescriptor, ShaderStages, StorageTextureAccess, StoreOp,
     SurfaceConfiguration, SurfaceTexture, TexelCopyBufferInfo, TexelCopyBufferLayout,
     TexelCopyTextureInfo, Texture, TextureAspect, TextureDescriptor, TextureDimension,
     TextureFormat, TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor,
@@ -148,9 +148,68 @@ fn construct_render_pipeline(
     )
 }
 
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
+pub enum Filter {
+    #[default]
+    Sigmoid = 0,
+    InverseSigmoid = 1,
+}
+
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
+pub enum ChromaFilter {
+    #[default]
+    All = 0,
+    Red = 1,
+    Green = 2,
+    Blue = 3,
+}
+
+#[derive(Debug)]
+pub struct DiPsProperties {
+    pub colorize: bool,
+    pub window_size: u8,
+    pub sigmoid_horizontal_scalar: f32,
+    pub filter_type: Filter,
+    pub chroma_filter: ChromaFilter,
+}
+
+impl Default for DiPsProperties {
+    fn default() -> Self {
+        Self {
+            colorize: true,
+            window_size: 3,
+            sigmoid_horizontal_scalar: 5.0,
+            filter_type: Filter::default(),
+            chroma_filter: ChromaFilter::default(),
+        }
+    }
+}
+
+impl DiPsProperties {
+    fn get_properties_hash_map(&self) -> HashMap<String, f64> {
+        let mut hm = HashMap::new();
+
+        hm.insert(
+            "COLORIZE".to_string(),
+            if self.colorize { 1.0 } else { 0.0 },
+        );
+        hm.insert("WINDOW_SIZE".to_string(), self.window_size as f64);
+        hm.insert(
+            "SIGMOID_HORIZONTAL_SCALAR".to_string(),
+            self.sigmoid_horizontal_scalar as f64,
+        );
+        hm.insert("FILTER_TYPE".to_string(), self.filter_type as u32 as f64);
+        hm.insert(
+            "CHROMA_FILTER".to_string(),
+            self.chroma_filter as u32 as f64,
+        );
+
+        hm
+    }
+}
+
 #[derive(Debug)]
 struct Renderer {
-    surface: Arc<Surface<'static>>,
     pipeline: RenderPipeline,
     bind_group: BindGroup,
 }
@@ -190,6 +249,7 @@ impl DiPsCompute {
         dips_window: Option<&DiPsWindow>,
         device: Rc<Device>,
         queue: Rc<Queue>,
+        dips_properties: DiPsProperties,
     ) -> Result<Self> {
         let textures = (0..num_textures)
             .map(|i| {
@@ -226,7 +286,7 @@ impl DiPsCompute {
                 "dips_compute/shaders/pre_compute_shader.wgsl",
             );
 
-        let (snapshot_texture_view, snapshot_texture) = {
+        let snapshot_texture_view = {
             let texture = device.create_texture(&TextureDescriptor {
                 label: Some("Snapshot texture"),
                 size: Extent3d {
@@ -242,10 +302,7 @@ impl DiPsCompute {
                 view_formats: &[],
             });
 
-            (
-                texture.create_view(&TextureViewDescriptor::default()),
-                texture,
-            )
+            texture.create_view(&TextureViewDescriptor::default())
         };
 
         let snapshot_buffer = device.create_buffer_init(&BufferInitDescriptor {
@@ -368,7 +425,7 @@ impl DiPsCompute {
             module: &modified_shader_module,
             compilation_options: PipelineCompilationOptions {
                 constants: &{
-                    let mut hm = HashMap::new();
+                    let mut hm = dips_properties.get_properties_hash_map();
                     hm.insert(String::from("NUM_TEXTURES"), num_textures as f64);
                     hm
                 },
@@ -384,7 +441,6 @@ impl DiPsCompute {
             );
 
             Some(Renderer {
-                surface: dip_window.surface.clone(),
                 pipeline,
                 bind_group,
             })

@@ -1,7 +1,7 @@
 use std::{rc::Rc, sync::Arc};
 
 use anyhow::{Result, anyhow};
-use dips_compute::DiPsCompute;
+use dips_compute::{ChromaFilter, DiPsCompute, DiPsProperties, Filter};
 use egui_wgpu::ScreenDescriptor;
 use gui::EguiRenderer;
 use log::*;
@@ -105,7 +105,12 @@ pub struct DiPsApp {
     camera: videoio::VideoCapture,
     frame: Mat,
     index: usize,
-    scale_factor: f32,
+
+    // GUI variables
+    colorize: bool,
+    filter_type: Filter,
+    chroma_filter: ChromaFilter,
+    filter_sense: f32,
 }
 
 impl DiPsApp {
@@ -164,8 +169,11 @@ impl DiPsApp {
             camera,
             frame: Mat::default(),
             index: 0,
-            scale_factor: 1.0,
             surface_texture: None,
+            colorize: true,
+            filter_type: Filter::default(),
+            chroma_filter: ChromaFilter::default(),
+            filter_sense: 5.0,
         })
     }
 
@@ -206,6 +214,7 @@ impl DiPsApp {
                 self.dips_window.as_ref(),
                 self.device.clone(),
                 self.queue.clone(),
+                DiPsProperties::default(),
             )?);
         }
 
@@ -247,16 +256,9 @@ impl DiPsApp {
                     self.dips_window.as_ref().unwrap().surface_config.width,
                     self.dips_window.as_ref().unwrap().surface_config.height,
                 ],
-                pixels_per_point: self.dips_window.as_ref().unwrap().window.scale_factor() as f32
-                    * self.scale_factor,
+                pixels_per_point: self.dips_window.as_ref().unwrap().window.scale_factor() as f32,
             };
 
-            // let surface_texture = self
-            //     .dips_window
-            //     .as_ref()
-            //     .unwrap()
-            //     .surface
-            //     .get_current_texture()?;
             let surface_texture = self.surface_texture.as_ref().unwrap();
 
             let surface_view = surface_texture
@@ -276,23 +278,173 @@ impl DiPsApp {
                 .vscroll(true)
                 .default_open(false)
                 .show(renderer.context(), |ui| {
+                    let redip =
+                        |color: bool, filter: Filter, chroma: ChromaFilter, filter_sense: f32| {
+                            DiPsCompute::new(
+                                FRAME_COUNT,
+                                self.dips_window
+                                    .as_ref()
+                                    .unwrap()
+                                    .window
+                                    .inner_size()
+                                    .height,
+                                self.dips_window.as_ref().unwrap().window.inner_size().width,
+                                self.dips_window.as_ref(),
+                                self.device.clone(),
+                                self.queue.clone(),
+                                DiPsProperties {
+                                    colorize: color,
+                                    filter_type: filter,
+                                    chroma_filter: chroma,
+                                    sigmoid_horizontal_scalar: filter_sense,
+                                    ..Default::default()
+                                },
+                            )
+                            .expect("Failed to redip")
+                        };
+
+                    // This is the button to take a snapshot and reset the initial frame
                     if ui.button("SnapShot").clicked() {
                         self.index = 0;
                     }
 
-                    // ui.separator();
-                    // ui.horizontal(|ui| {
-                    //     ui.label(format!(
-                    //         "Pixels per point: {}",
-                    //         renderer.context().pixels_per_point()
-                    //     ));
-                    //     if ui.button("-").clicked() {
-                    //         self.scale_factor = (self.scale_factor - 0.1).max(0.3);
-                    //     }
-                    //     if ui.button("+").clicked() {
-                    //         self.scale_factor = (self.scale_factor + 0.1).min(3.0);
-                    //     }
-                    // });
+                    // This is the checkbox for Colorizing the output
+                    if ui.checkbox(&mut self.colorize, "Colorize").changed() {
+                        self.index = 0;
+                        self.compute = Some(redip(
+                            self.colorize,
+                            self.filter_type,
+                            self.chroma_filter,
+                            self.filter_sense,
+                        ));
+                    }
+
+                    // This is the combo box to select the sensitivity filter type to be used during the DiPs
+                    // Sigmoid
+                    // Inverse Sigmoid
+                    egui::ComboBox::from_label("Filter Type")
+                        .selected_text(match self.filter_type {
+                            Filter::Sigmoid => "Sigmoid",
+                            Filter::InverseSigmoid => "Inverse Sigmoid",
+                        })
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .selectable_value(&mut self.filter_type, Filter::Sigmoid, "Sigmoid")
+                                .clicked()
+                            {
+                                self.index = 0;
+                                self.compute = Some(redip(
+                                    self.colorize,
+                                    self.filter_type,
+                                    self.chroma_filter,
+                                    self.filter_sense,
+                                ));
+                            };
+                            if ui
+                                .selectable_value(
+                                    &mut self.filter_type,
+                                    Filter::InverseSigmoid,
+                                    "Inverse Sigmoid",
+                                )
+                                .clicked()
+                            {
+                                self.index = 0;
+                                self.compute = Some(redip(
+                                    self.colorize,
+                                    self.filter_type,
+                                    self.chroma_filter,
+                                    self.filter_sense,
+                                ));
+                            };
+                        });
+
+                    // This is the slider to choose a horizontal scalar value for the sensitivity filter
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut self.filter_sense, 1.0..=10.0)
+                                .text("Filter Sensitivity"),
+                        )
+                        .drag_stopped()
+                    {
+                        self.index = 0;
+                        self.compute = Some(redip(
+                            self.colorize,
+                            self.filter_type,
+                            self.chroma_filter,
+                            self.filter_sense,
+                        ));
+                    };
+
+                    // This is the combo box to select which chroma filter to use
+                    // Default is all channels
+                    egui::ComboBox::from_label("Chroma Filter")
+                        .selected_text(match self.chroma_filter {
+                            ChromaFilter::All => "All",
+                            ChromaFilter::Red => "Red",
+                            ChromaFilter::Green => "Green",
+                            ChromaFilter::Blue => "Blue",
+                        })
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .selectable_value(&mut self.chroma_filter, ChromaFilter::All, "All")
+                                .clicked()
+                            {
+                                self.index = 0;
+                                self.compute = Some(redip(
+                                    self.colorize,
+                                    self.filter_type,
+                                    self.chroma_filter,
+                                    self.filter_sense,
+                                ));
+                            }
+
+                            if ui
+                                .selectable_value(&mut self.chroma_filter, ChromaFilter::Red, "Red")
+                                .clicked()
+                            {
+                                self.index = 0;
+                                self.compute = Some(redip(
+                                    self.colorize,
+                                    self.filter_type,
+                                    self.chroma_filter,
+                                    self.filter_sense,
+                                ));
+                            }
+
+                            if ui
+                                .selectable_value(
+                                    &mut self.chroma_filter,
+                                    ChromaFilter::Green,
+                                    "Green",
+                                )
+                                .clicked()
+                            {
+                                self.index = 0;
+                                self.compute = Some(redip(
+                                    self.colorize,
+                                    self.filter_type,
+                                    self.chroma_filter,
+                                    self.filter_sense,
+                                ));
+                            }
+
+                            if ui
+                                .selectable_value(
+                                    &mut self.chroma_filter,
+                                    ChromaFilter::Blue,
+                                    "Blue",
+                                )
+                                .clicked()
+                            {
+                                self.index = 0;
+                                self.compute = Some(redip(
+                                    self.colorize,
+                                    self.filter_type,
+                                    self.chroma_filter,
+                                    self.filter_sense,
+                                ));
+                            }
+                        })
                 });
 
             renderer.end_frame_and_draw(
@@ -303,7 +455,6 @@ impl DiPsApp {
             );
 
             renderer.queue.submit(Some(encoder.finish()));
-            // surface_texture.present();
         }
 
         Ok(())
@@ -332,20 +483,6 @@ impl ApplicationHandler for DiPsApp {
                     info!("Closing DiPs Window");
                     event_loop.exit();
                 }
-                // WindowEvent::KeyboardInput {
-                //     event: key_event, ..
-                // } => {
-                //     match key_event.key_without_modifiers().as_ref() {
-                //         Key::Character("s") => {
-                //             self.index = 0;
-                //         }
-                //         Key::Character("q") => {
-                //             event_loop.exit();
-                //         }
-                //         _ => {}
-                //     }
-
-                // }
                 WindowEvent::RedrawRequested => {
                     self.surface_texture = Some(
                         self.dips_window
@@ -366,15 +503,7 @@ impl ApplicationHandler for DiPsApp {
                         Err(err) => error!("Encountered Error: {err}"),
                     }
 
-                    // if let Some(window) = self.dips_window.as_ref() {
-                    //     window
-                    //         .surface
-                    //         .get_current_texture()
-                    //         .expect("Failed to get texture")
-                    //         .present();
-                    // }
                     self.surface_texture.take().unwrap().present();
-                    // self.surface_texture.as_ref().unwrap().present();
                 }
                 WindowEvent::KeyboardInput { .. }
                 | WindowEvent::MouseInput { .. }
