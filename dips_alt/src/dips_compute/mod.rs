@@ -12,10 +12,10 @@ use wgpu::{
     PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, Queue,
     RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
     SamplerBindingType, SamplerDescriptor, ShaderStages, StorageTextureAccess, StoreOp, Surface,
-    SurfaceConfiguration, TexelCopyBufferInfo, TexelCopyBufferLayout, TexelCopyTextureInfo,
-    Texture, TextureAspect, TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType,
-    TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension, VertexState,
-    include_wgsl,
+    SurfaceConfiguration, SurfaceTexture, TexelCopyBufferInfo, TexelCopyBufferLayout,
+    TexelCopyTextureInfo, Texture, TextureAspect, TextureDescriptor, TextureDimension,
+    TextureFormat, TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor,
+    TextureViewDimension, VertexState, include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
@@ -415,7 +415,12 @@ impl DiPsCompute {
         })
     }
 
-    pub fn send_frame(&mut self, frame: &[u8], snapshot: Option<()>) -> Vec<u8> {
+    pub fn send_frame(
+        &mut self,
+        frame: &[u8],
+        snapshot: Option<()>,
+        surface_texture: Option<&SurfaceTexture>,
+    ) -> Vec<u8> {
         let mut encoder = self
             .device
             .create_command_encoder(&CommandEncoderDescriptor {
@@ -478,7 +483,7 @@ impl DiPsCompute {
         // If we have a renderer attached then render to the screen
         // otherwise just copy to the output buffer
         if let Some(renderer) = self.renderer.as_ref() {
-            let output = renderer.surface.get_current_texture().unwrap();
+            let output = surface_texture.unwrap();
             let view = output
                 .texture
                 .create_view(&TextureViewDescriptor::default());
@@ -507,7 +512,7 @@ impl DiPsCompute {
                 render_pass.draw(0..6, 0..1);
             }
             self.queue.submit(Some(encoder.finish()));
-            output.present();
+            // output.present();
         } else {
             encoder.copy_texture_to_buffer(
                 TexelCopyTextureInfo {

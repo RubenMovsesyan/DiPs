@@ -2,126 +2,35 @@ use std::{rc::Rc, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use dips_compute::DiPsCompute;
+use egui_wgpu::ScreenDescriptor;
+use gui::EguiRenderer;
 use log::*;
 use opencv::{
-    core::{AlgorithmHint, VecN},
-    highgui, imgproc,
+    core::AlgorithmHint,
+    imgproc,
     prelude::*,
     videoio::{self, VideoCaptureTraitConst},
 };
 use pollster::FutureExt;
 use wgpu::{
-    Adapter, Backends, Device, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits,
-    MemoryHints, PowerPreference, PresentMode, Queue, RequestAdapterOptionsBase, Surface,
-    SurfaceConfiguration, TextureUsages,
+    Adapter, Backends, CommandEncoderDescriptor, Device, DeviceDescriptor, Features, Instance,
+    InstanceDescriptor, Limits, MemoryHints, PowerPreference, PresentMode, Queue,
+    RequestAdapterOptionsBase, Surface, SurfaceConfiguration, SurfaceTexture, TextureUsages,
+    TextureViewDescriptor,
 };
 use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalSize, Size},
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoop},
-    keyboard::Key,
-    platform::modifier_supplement::KeyEventExtModifierSupplement,
     window::Window,
 };
 
 mod dips_compute;
+mod gui;
 mod utils;
 
 const FRAME_COUNT: usize = 2;
-// pub fn run_with_open_cv() -> Result<()> {
-//     highgui::named_window("window", highgui::WINDOW_NORMAL)?;
-
-//     // This is the main camera on the device, change index to access other
-//     // device cameras
-//     let mut cam = videoio::VideoCapture::new(0, videoio::CAP_ANY)?;
-
-//     if !cam.is_opened()? {
-//         panic!("Could not open camera");
-//     }
-
-//     let mut dips: Option<DiPsCompute> = None;
-//     let mut frame = Mat::default();
-//     let mut index: usize = 0;
-
-//     loop {
-//         cam.read(&mut frame)?;
-
-//         let width = frame.rows();
-//         let height = frame.cols();
-
-//         if dips.is_none() {
-//             dips = Some(DiPsCompute::new(
-//                 FRAME_COUNT,
-//                 width as u32,
-//                 height as u32,
-//                 None,
-//             )?);
-//             println!("w: {}, h: {}", width, height);
-//         }
-
-//         // Convert to rgba to be used in compute shader
-//         let mut rgba_frame = Mat::default();
-
-//         match imgproc::cvt_color(
-//             &frame,
-//             &mut rgba_frame,
-//             imgproc::COLOR_BGR2RGBA,
-//             0,
-//             AlgorithmHint::ALGO_HINT_DEFAULT,
-//         ) {
-//             Ok(t) => t,
-//             Err(err) => println!("Error: {:#?}", err),
-//         }
-
-//         let bytes = rgba_frame.data_bytes()?;
-
-//         let new_frame_data = unsafe {
-//             dips.as_mut().unwrap_unchecked().send_frame(
-//                 &bytes,
-//                 match index {
-//                     FRAME_COUNT => Some(()),
-//                     _ => None,
-//                 },
-//             )
-//         };
-
-//         if index < FRAME_COUNT + 1 {
-//             index += 1;
-//         }
-
-//         let new_frame =
-//             match Mat::new_rows_cols_with_bytes::<VecN<u8, 4>>(width, height, &new_frame_data) {
-//                 Ok(t) => t,
-//                 Err(err) => return Err(anyhow!(err)),
-//             };
-
-//         let mut output_frame = Mat::default();
-//         imgproc::cvt_color(
-//             &new_frame,
-//             &mut output_frame,
-//             imgproc::COLOR_RGBA2BGR,
-//             0,
-//             AlgorithmHint::ALGO_HINT_DEFAULT,
-//         )?;
-
-//         match highgui::imshow("window", &output_frame) {
-//             Ok(t) => t,
-//             Err(err) => println!("Error: {:#?}", err),
-//         }
-
-//         let key = highgui::wait_key(1)?;
-
-//         // If pressing q then quit
-//         if key == 'q' as i32 {
-//             break;
-//         } else if key == 's' as i32 {
-//             index = 0;
-//         }
-//     }
-
-//     Ok(())
-// }
 
 #[derive(Debug)]
 struct DiPsWindow {
@@ -138,7 +47,6 @@ impl DiPsWindow {
         instance: &Instance,
         adapter: &Adapter,
         device: &Device,
-        queue: &Queue,
     ) -> Result<Self> {
         let window = Arc::new(
             event_loop.create_window(
@@ -178,15 +86,10 @@ impl DiPsWindow {
             surface_config,
         })
     }
-
-    pub fn get_window(&self) -> Arc<Window> {
-        self.window.clone()
-    }
 }
 
 #[derive(Debug)]
 pub struct DiPsApp {
-    // window: Option<Arc<Window>>,
     dips_window: Option<DiPsWindow>,
 
     // WGPU
@@ -195,10 +98,14 @@ pub struct DiPsApp {
     instance: Instance,
     adapter: Adapter,
 
+    surface_texture: Option<SurfaceTexture>,
+
     compute: Option<DiPsCompute>,
+    egui_renderer: Option<EguiRenderer>,
     camera: videoio::VideoCapture,
     frame: Mat,
     index: usize,
+    scale_factor: f32,
 }
 
 impl DiPsApp {
@@ -253,9 +160,12 @@ impl DiPsApp {
             instance,
             adapter,
             compute: None,
+            egui_renderer: None,
             camera,
             frame: Mat::default(),
             index: 0,
+            scale_factor: 1.0,
+            surface_texture: None,
         })
     }
 
@@ -267,8 +177,16 @@ impl DiPsApp {
             &self.instance,
             &self.adapter,
             &self.device,
-            &self.queue,
         )?);
+
+        self.egui_renderer = Some(EguiRenderer::new(
+            self.device.clone(),
+            self.queue.clone(),
+            self.dips_window.as_ref().unwrap().surface_config.format,
+            None,
+            1,
+            &self.dips_window.as_ref().unwrap(),
+        ));
 
         Ok(())
     }
@@ -311,11 +229,81 @@ impl DiPsApp {
                     FRAME_COUNT => Some(()),
                     _ => None,
                 },
+                self.surface_texture.as_ref(),
             )
         };
 
         if self.index <= FRAME_COUNT {
             self.index += 1;
+        }
+
+        Ok(())
+    }
+
+    fn run_egui(&mut self) -> Result<()> {
+        if let Some(renderer) = self.egui_renderer.as_mut() {
+            let screen_descriptor = ScreenDescriptor {
+                size_in_pixels: [
+                    self.dips_window.as_ref().unwrap().surface_config.width,
+                    self.dips_window.as_ref().unwrap().surface_config.height,
+                ],
+                pixels_per_point: self.dips_window.as_ref().unwrap().window.scale_factor() as f32
+                    * self.scale_factor,
+            };
+
+            // let surface_texture = self
+            //     .dips_window
+            //     .as_ref()
+            //     .unwrap()
+            //     .surface
+            //     .get_current_texture()?;
+            let surface_texture = self.surface_texture.as_ref().unwrap();
+
+            let surface_view = surface_texture
+                .texture
+                .create_view(&TextureViewDescriptor::default());
+
+            let mut encoder = self
+                .device
+                .create_command_encoder(&CommandEncoderDescriptor {
+                    label: Some("GUI Command Encoder"),
+                });
+
+            renderer.begin_frame(&self.dips_window.as_ref().unwrap().window);
+
+            egui::Window::new("DiPs Controls")
+                .resizable(true)
+                .vscroll(true)
+                .default_open(false)
+                .show(renderer.context(), |ui| {
+                    if ui.button("SnapShot").clicked() {
+                        self.index = 0;
+                    }
+
+                    // ui.separator();
+                    // ui.horizontal(|ui| {
+                    //     ui.label(format!(
+                    //         "Pixels per point: {}",
+                    //         renderer.context().pixels_per_point()
+                    //     ));
+                    //     if ui.button("-").clicked() {
+                    //         self.scale_factor = (self.scale_factor - 0.1).max(0.3);
+                    //     }
+                    //     if ui.button("+").clicked() {
+                    //         self.scale_factor = (self.scale_factor + 0.1).min(3.0);
+                    //     }
+                    // });
+                });
+
+            renderer.end_frame_and_draw(
+                &self.dips_window.as_ref().unwrap().window,
+                &mut encoder,
+                &surface_view,
+                screen_descriptor,
+            );
+
+            renderer.queue.submit(Some(encoder.finish()));
+            // surface_texture.present();
         }
 
         Ok(())
@@ -338,38 +326,71 @@ impl ApplicationHandler for DiPsApp {
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        if self.dips_window.as_ref().unwrap().get_window().id() == window_id {
+        if self.dips_window.as_ref().unwrap().window.id() == window_id {
             match event {
                 WindowEvent::CloseRequested => {
                     info!("Closing DiPs Window");
                     event_loop.exit();
                 }
-                WindowEvent::KeyboardInput { event, .. } => {
-                    match event.key_without_modifiers().as_ref() {
-                        Key::Character("s") => {
-                            self.index = 0;
-                        }
-                        Key::Character("q") => {
-                            event_loop.exit();
-                        }
-                        _ => {}
+                // WindowEvent::KeyboardInput {
+                //     event: key_event, ..
+                // } => {
+                //     match key_event.key_without_modifiers().as_ref() {
+                //         Key::Character("s") => {
+                //             self.index = 0;
+                //         }
+                //         Key::Character("q") => {
+                //             event_loop.exit();
+                //         }
+                //         _ => {}
+                //     }
+
+                // }
+                WindowEvent::RedrawRequested => {
+                    self.surface_texture = Some(
+                        self.dips_window
+                            .as_ref()
+                            .unwrap()
+                            .surface
+                            .get_current_texture()
+                            .expect("Failed to get surface texture"),
+                    );
+
+                    match self.run_dips() {
+                        Ok(()) => {}
+                        Err(err) => error!("Encountered Error: {err}"),
+                    }
+
+                    match self.run_egui() {
+                        Ok(()) => {}
+                        Err(err) => error!("Encountered Error: {err}"),
+                    }
+
+                    // if let Some(window) = self.dips_window.as_ref() {
+                    //     window
+                    //         .surface
+                    //         .get_current_texture()
+                    //         .expect("Failed to get texture")
+                    //         .present();
+                    // }
+                    self.surface_texture.take().unwrap().present();
+                    // self.surface_texture.as_ref().unwrap().present();
+                }
+                WindowEvent::KeyboardInput { .. }
+                | WindowEvent::MouseInput { .. }
+                | WindowEvent::CursorMoved { .. }
+                | WindowEvent::MouseWheel { .. } => {
+                    if let Some(renderer) = self.egui_renderer.as_mut() {
+                        renderer.handle_input(&self.dips_window.as_ref().unwrap().window, &event);
                     }
                 }
-                WindowEvent::RedrawRequested => match self.run_dips() {
-                    Ok(()) => {}
-                    Err(err) => error!("Encountered Error: {err}"),
-                },
                 _ => (),
             }
         }
     }
 
     fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
-        self.dips_window
-            .as_ref()
-            .unwrap()
-            .get_window()
-            .request_redraw();
+        self.dips_window.as_ref().unwrap().window.request_redraw();
     }
 }
 
