@@ -120,57 +120,70 @@ fn inv_sigmoid(
     return (-log((1.0 / (input + 0.5)) - 1)) / SIGMOID_HORIZONTAL_SCALAR;
 }
 
+fn load_from_texture_id(texture_id: u32, coords: vec2<u32>) -> vec4<f32> {
+    switch (texture_id) {
+//lFtIr3p1Ac3
+        default: {
+            return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        }
+    }
+}
+
 /// Takes in the coordinates of the pixel and returns the spatial median filter
 /// color of that pixel with the set WINDOW_SIZE
-// fn spatial_median_filter(coords: vec2<u32>, dimensions: vec2<u32>, input_texture: texture_storage_2d<rgba8unorm, read>) -> vec4<f32> {
-//     if (WINDOW_SIZE == 1) {
-//         let intensity = get_intensity(textureLoad(input_texture, coords.xy));
-//         return vec4<f32>(intensity, intensity, intensity, 1.0);
-//     }
+fn spatial_median_filter(coords: vec2<u32>, dimensions: vec2<u32>, input_texture_id: u32) -> f32 {
+    if (WINDOW_SIZE == 1) {
+        let intensity = get_intensity(load_from_texture_id(input_texture_id, coords.xy));
+        // return vec4<f32>(intensity, intensity, intensity, 1.0);
+        return intensity;
+    }
 
 
-//     var median_array: array<f32, MAX_WIN_SIZE_SQUARE>;
-//     let win_size_2 = WINDOW_SIZE / 2;
+    var spatial_median_array: array<f32, MAX_WIN_SIZE_SQUARE>;
+    let win_size_2 = WINDOW_SIZE / 2;
 
-//     for (var i = -win_size_2; i < win_size_2; i++) {
-//         for (var j = -win_size_2; j < win_size_2; j++) {
-//             var color: f32;
-//             if (i32(coords.x) + i >= i32(dimensions.x) || i32(coords.y) + j >= i32(dimensions.y) || i32(coords.x) + i < 0 || i32(coords.y) + j < 0) {
-//                 color = 0.0;
-//             } else {
-//                 color = get_intensity(textureLoad(input_texture, vec2<u32>(u32(i32(coords.x) + i), u32(i32(coords.y) + j))));
-//             }
+    for (var i = -win_size_2; i < win_size_2; i++) {
+        for (var j = -win_size_2; j < win_size_2; j++) {
+            var color: f32;
+            if (i32(coords.x) + i >= i32(dimensions.x) || i32(coords.y) + j >= i32(dimensions.y) || i32(coords.x) + i < 0 || i32(coords.y) + j < 0) {
+                color = 0.0;
+            } else {
+                // color = get_intensity(textureLoad(input_texture, vec2<u32>(u32(i32(coords.x) + i), u32(i32(coords.y) + j))));
+                color = get_intensity(load_from_texture_id(input_texture_id, vec2<u32>(u32(i32(coords.x) + i), u32(i32(coords.y) + j))));
+            }
 
-//             let array_i = i + win_size_2;
-//             let array_j = j + win_size_2;
+            let array_i = i + win_size_2;
+            let array_j = j + win_size_2;
 
-//             let array_ind = array_i + (WINDOW_SIZE * array_j);
+            let array_ind = array_i + (WINDOW_SIZE * array_j);
 
-//             median_array[array_ind] = color;
-//         }
-//     }
+            spatial_median_array[array_ind] = color;
+        }
+    }
 
-//     sort the array
-//     for (var i = 0; i < WIN_SIZE_SQUARE; i++) {
-//         var swapped: bool = false;
-//         for (var j = 0; j < WIN_SIZE_SQUARE; j++) {
-//             if (median_array[j] > median_array[j + 1]) {
-//                 let temp = median_array[j];
-//                 median_array[j] = median_array[j + 1];
-//                 median_array[j + 1] = temp;
+    // sort the array
+    for (var i = 0; i < WIN_SIZE_SQUARE - 1; i++) {
+        var swapped: bool = false;
+        for (var j = 0; j < WIN_SIZE_SQUARE - 1; j++) {
+            if (spatial_median_array[j] > spatial_median_array[j + 1]) {
+                let temp = spatial_median_array[j];
+                spatial_median_array[j] = spatial_median_array[j + 1];
+                spatial_median_array[j + 1] = temp;
 
-//                 swapped = true;
-//             }
-//         }
+                swapped = true;
+            }
+        }
 
-//         if (!swapped) {
-//             break;
-//         }
-//     }
+        if (!swapped) {
+            break;
+        }
+    }
 
-//     let intensity = median_array[(WIN_SIZE_SQUARE / 2) + 1];
-//     return vec4<f32>(intensity, intensity, intensity, 1.0);
-// }
+    let intensity = spatial_median_array[(WIN_SIZE_SQUARE / 2) + 1];
+    // return vec4<f32>(intensity, intensity, intensity, 1.0);
+    return intensity;
+    // return 0.0;
+}
 
 @compute @workgroup_size(16, 16)
 fn pre_compute_main(
@@ -183,17 +196,17 @@ fn pre_compute_main(
         return;
     }
 
-    var textures: array<vec4<f32>, MAX_TEMPORAL_ARRAY_SIZE>;
+    // var textures: array<vec4<f32>, MAX_TEMPORAL_ARRAY_SIZE>;
+    var median_array: array<f32, MAX_TEMPORAL_ARRAY_SIZE>;
     // =========== array generator ===========
 //r3p1Ac3
     // =========== array generator ===========
 
-    var median_array: array<f32, MAX_TEMPORAL_ARRAY_SIZE>;
 
     // Fill the median array with the values from the spatially filtered textures
-    for (var i: u32 = 0; i < NUM_TEXTURES; i++) {
-        median_array[i] = get_intensity(textures[i]);
-    }
+    // for (var i: u32 = 0; i < NUM_TEXTURES; i++) {
+    //     median_array[i] = get_intensity(textures[i]);
+    // }
 
     // Sort the temporal texture array
     for (var i: u32 = 0; i < NUM_TEXTURES; i++) {
@@ -221,9 +234,6 @@ fn pre_compute_main(
         textureStore(snapshot_texture, coords.xy, vec4<f32>(new_color.rgb, 1.0));
         textureStore(output_texture, coords.xy, vec4<f32>(new_color.rgb, 1.0));
     } else {
-        // let color_diff = textureLoad(snapshot_texture, coords.xy).rgb - color.rgb + vec3<f32>(0.5, 0.5, 0.5);
-        // let color_diff = textureLoad(snapshot_texture, coords.xy).rgb;
-
         let original_intensity = textureLoad(snapshot_texture, coords.xy).r;
         var diff = (original_intensity - median_array[NUM_TEXTURES / 2]);
 
@@ -240,7 +250,6 @@ fn pre_compute_main(
         }
 
         diff *= DIFF_SCALE;
-        // let new_color = vec3<f32>(diff, diff, diff);
         var new_color: vec3<f32>;
 
         if (COLORIZE == true) {
@@ -251,51 +260,4 @@ fn pre_compute_main(
 
         textureStore(output_texture, coords.xy, vec4<f32>(new_color.rgb, 1.0));
     }
-
-
-
-
-
-    // let new_color = vec3<f32>(diff, diff, diff);
-    // switch FILTER_TYPE {
-    //     case 0u: {
-    //         diff = sigmoid(diff);
-    //     }
-    //     case 1u: {
-    //         diff = inv_sigmoid(diff);
-    //     }
-    //     default: {}
-    // }
-
-    // diff *= DIFF_SCALE;
-
-    // var new_color: vec3<f32>;
-
-    // if (COLORIZE == true) {
-    //     new_color = diff_to_color(diff);
-    // } else {
-    //     new_color = vec3<f32>(0.5, 0.5, 0.5) - vec3<f32>(diff, diff, diff);
-    // }
-
-
-
-    // let adj_coords = coords.yx;
-
-    // var avg = vec4<f32>(0.0, 0.0, 0.0, 0.0);
-    // for(var i: u32 = 0; i < NUM_TEXTURES; i++) {
-    //     avg += textures[i];
-    // }
-    // avg /= f32(NUM_TEXTURES);
-
-    // var red = f32(coords.x) / f32(dimensions.x) / 2.0;
-    // var green = f32(coords.y) / f32(dimensions.y) / 2.0;
-
-    // let new_color = vec3<f32>(
-    //     avg.r,
-    //     avg.g,
-    //     avg.b
-    // );
-
-
-
 }

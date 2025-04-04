@@ -111,6 +111,7 @@ pub struct DiPsApp {
     filter_type: Filter,
     chroma_filter: ChromaFilter,
     filter_sense: f32,
+    spatial_window_size: u8,
 }
 
 impl DiPsApp {
@@ -174,6 +175,7 @@ impl DiPsApp {
             filter_type: Filter::default(),
             chroma_filter: ChromaFilter::default(),
             filter_sense: 5.0,
+            spatial_window_size: 1,
         })
     }
 
@@ -278,30 +280,33 @@ impl DiPsApp {
                 .vscroll(true)
                 .default_open(false)
                 .show(renderer.context(), |ui| {
-                    let redip =
-                        |color: bool, filter: Filter, chroma: ChromaFilter, filter_sense: f32| {
-                            DiPsCompute::new(
-                                FRAME_COUNT,
-                                self.dips_window
-                                    .as_ref()
-                                    .unwrap()
-                                    .window
-                                    .inner_size()
-                                    .height,
-                                self.dips_window.as_ref().unwrap().window.inner_size().width,
-                                self.dips_window.as_ref(),
-                                self.device.clone(),
-                                self.queue.clone(),
-                                DiPsProperties {
-                                    colorize: color,
-                                    filter_type: filter,
-                                    chroma_filter: chroma,
-                                    sigmoid_horizontal_scalar: filter_sense,
-                                    ..Default::default()
-                                },
-                            )
-                            .expect("Failed to redip")
-                        };
+                    let redip = |color: bool,
+                                 filter: Filter,
+                                 chroma: ChromaFilter,
+                                 filter_sense: f32,
+                                 spatial_window_size: u8| {
+                        DiPsCompute::new(
+                            FRAME_COUNT,
+                            self.dips_window
+                                .as_ref()
+                                .unwrap()
+                                .window
+                                .inner_size()
+                                .height,
+                            self.dips_window.as_ref().unwrap().window.inner_size().width,
+                            self.dips_window.as_ref(),
+                            self.device.clone(),
+                            self.queue.clone(),
+                            DiPsProperties {
+                                colorize: color,
+                                filter_type: filter,
+                                chroma_filter: chroma,
+                                sigmoid_horizontal_scalar: filter_sense,
+                                window_size: spatial_window_size,
+                            },
+                        )
+                        .expect("Failed to redip")
+                    };
 
                     // This is the button to take a snapshot and reset the initial frame
                     if ui.button("SnapShot").clicked() {
@@ -316,6 +321,7 @@ impl DiPsApp {
                             self.filter_type,
                             self.chroma_filter,
                             self.filter_sense,
+                            self.spatial_window_size,
                         ));
                     }
 
@@ -338,6 +344,7 @@ impl DiPsApp {
                                     self.filter_type,
                                     self.chroma_filter,
                                     self.filter_sense,
+                                    self.spatial_window_size,
                                 ));
                             };
                             if ui
@@ -354,6 +361,7 @@ impl DiPsApp {
                                     self.filter_type,
                                     self.chroma_filter,
                                     self.filter_sense,
+                                    self.spatial_window_size,
                                 ));
                             };
                         });
@@ -372,6 +380,7 @@ impl DiPsApp {
                             self.filter_type,
                             self.chroma_filter,
                             self.filter_sense,
+                            self.spatial_window_size,
                         ));
                     };
 
@@ -395,6 +404,7 @@ impl DiPsApp {
                                     self.filter_type,
                                     self.chroma_filter,
                                     self.filter_sense,
+                                    self.spatial_window_size,
                                 ));
                             }
 
@@ -408,6 +418,7 @@ impl DiPsApp {
                                     self.filter_type,
                                     self.chroma_filter,
                                     self.filter_sense,
+                                    self.spatial_window_size,
                                 ));
                             }
 
@@ -425,6 +436,7 @@ impl DiPsApp {
                                     self.filter_type,
                                     self.chroma_filter,
                                     self.filter_sense,
+                                    self.spatial_window_size,
                                 ));
                             }
 
@@ -442,9 +454,29 @@ impl DiPsApp {
                                     self.filter_type,
                                     self.chroma_filter,
                                     self.filter_sense,
+                                    self.spatial_window_size,
                                 ));
                             }
-                        })
+                        });
+
+                    // This is the slider to choose a spatial window size
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut self.spatial_window_size, 1..=7)
+                                .text("Spatial Window Filtering")
+                                .step_by(2.0),
+                        )
+                        .drag_stopped()
+                    {
+                        self.index = 0;
+                        self.compute = Some(redip(
+                            self.colorize,
+                            self.filter_type,
+                            self.chroma_filter,
+                            self.filter_sense,
+                            self.spatial_window_size,
+                        ));
+                    };
                 });
 
             renderer.end_frame_and_draw(

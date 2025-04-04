@@ -25,6 +25,7 @@ pub fn create_dynamic_bindings(
 
     let mut shader_bindings: String = String::new();
     let mut arraying_texture: String = String::new();
+    let mut texture_loading: String = String::new();
 
     for (index, texture_view) in texture_views.iter().enumerate() {
         if index % 4 == 0 && index != 0 {
@@ -69,8 +70,10 @@ pub fn create_dynamic_bindings(
             &format!("@group({bind_group}) @binding({binding_number})\nvar texture_{index}: texture_storage_2d<rgba8unorm, read>;\n")
         );
         arraying_texture.push_str(&format!(
-            // "    textures[{index}] = spatial_median_filter(coords.xy, dimensions.xy, texture_{index});\n"
-            "    textures[{index}] = textureLoad(texture_{index}, coords.xy);\n"
+            "    median_array[{index}] = spatial_median_filter(coords.xy, dimensions.xy, {index});\n" // "    textures[{index}] = textureLoad(texture_{index}, coords.xy);\n"
+        ));
+        texture_loading.push_str(&format!(
+            "        case {index}u: {{\n            return textureLoad(texture_{index}, coords.xy);\n        }}\n"
         ));
     }
 
@@ -113,6 +116,7 @@ pub fn create_dynamic_bindings(
 
     let mut shader = load_shader(shader_path);
     shader = shader.replace("//r3p1Ac3", &arraying_texture);
+    shader = shader.replace("//lFtIr3p1Ac3", &texture_loading);
 
     modified_shader.push_str(&shader_bindings);
     modified_shader.push_str(&shader);

@@ -177,7 +177,7 @@ impl Default for DiPsProperties {
     fn default() -> Self {
         Self {
             colorize: true,
-            window_size: 3,
+            window_size: 1,
             sigmoid_horizontal_scalar: 5.0,
             filter_type: Filter::default(),
             chroma_filter: ChromaFilter::default(),
