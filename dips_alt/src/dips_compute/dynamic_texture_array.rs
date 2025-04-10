@@ -5,17 +5,12 @@ use wgpu::{
     TextureView, TextureViewDimension,
 };
 
-use std::{borrow::Cow, fs::read_to_string};
-
-fn load_shader(shader_path: &str) -> String {
-    read_to_string(shader_path).expect("Failed to open file")
-}
+use std::borrow::Cow;
 
 pub fn create_dynamic_bindings(
     device: &Device,
     mut bind_group: u32,
     texture_views: Vec<&TextureView>,
-    shader_path: &str,
 ) -> (Vec<BindGroupLayout>, Vec<BindGroup>, ShaderModule) {
     let mut layouts: Vec<BindGroupLayout> = Vec::new();
     let mut bind_groups: Vec<BindGroup> = Vec::new();
@@ -114,7 +109,7 @@ pub fn create_dynamic_bindings(
 
     let mut modified_shader = String::new();
 
-    let mut shader = load_shader(shader_path);
+    let mut shader = include_str!("shaders/pre_compute_shader.wgsl").to_string();
     shader = shader.replace("//r3p1Ac3", &arraying_texture);
     shader = shader.replace("//lFtIr3p1Ac3", &texture_loading);
 

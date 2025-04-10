@@ -1,4 +1,4 @@
-use std::{rc::Rc, sync::Arc};
+use std::{error::Error, path::Path, rc::Rc, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use dips_compute::{ChromaFilter, DiPsCompute, DiPsProperties, Filter};
@@ -6,8 +6,8 @@ use egui_wgpu::ScreenDescriptor;
 use gui::EguiRenderer;
 use log::*;
 use opencv::{
-    core::AlgorithmHint,
-    imgproc,
+    core::{AlgorithmHint, VecN},
+    highgui, imgproc,
     prelude::*,
     videoio::{self, VideoCaptureTraitConst},
 };
@@ -562,4 +562,139 @@ pub fn run_dips_app() {
 
     let mut app = DiPsApp::new().expect("Failed to create DiPs");
     _ = event_loop.run_app(&mut app);
+}
+
+pub fn run_dips_on_file<P>(path: P) -> Result<()>
+where
+    P: AsRef<Path>,
+{
+    // Initialize WGPU and attach it to a window if provided
+    let instance = Instance::new(&InstanceDescriptor {
+        backends: Backends::all(),
+        ..Default::default()
+    });
+
+    let adapter = instance
+        .request_adapter(&RequestAdapterOptionsBase {
+            power_preference: PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: None,
+        })
+        .block_on()
+        .ok_or(anyhow!("Couldn't create the adapter"))?;
+
+    let (device, queue) = match adapter
+        .request_device(
+            &DeviceDescriptor {
+                label: Some("Device and Queue"),
+                required_features: Features::TEXTURE_BINDING_ARRAY
+                    | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+                required_limits: Limits {
+                    max_bind_groups: 5,
+                    ..Default::default()
+                },
+                memory_hints: MemoryHints::default(),
+            },
+            None,
+        )
+        .block_on()
+    {
+        Ok((device, queue)) => (device, queue),
+        Err(err) => panic!("{err}"),
+    };
+
+    let (device, queue) = (Rc::new(device), Rc::new(queue));
+
+    let mut index: usize = 0;
+
+    highgui::named_window("DiPs", highgui::WINDOW_NORMAL)?;
+
+    let mut file_stream = videoio::VideoCapture::from_file(
+        path.as_ref().as_os_str().to_str().unwrap(),
+        videoio::CAP_ANY,
+    )?;
+
+    if !file_stream.is_opened()? {
+        panic!("Failed to open file");
+    }
+
+    let mut frame = Mat::default();
+    let mut compute_state: Option<DiPsCompute> = None;
+
+    loop {
+        file_stream.read(&mut frame)?;
+
+        let width = frame.rows();
+        let height = frame.cols();
+
+        if compute_state.is_none() {
+            compute_state = Some(DiPsCompute::new(
+                FRAME_COUNT,
+                width as u32,
+                height as u32,
+                None,
+                device.clone(),
+                queue.clone(),
+                DiPsProperties::default(),
+            )?);
+        }
+
+        let mut rgba_frame = Mat::default();
+
+        imgproc::cvt_color(
+            &frame,
+            &mut rgba_frame,
+            imgproc::COLOR_BGR2RGBA,
+            0,
+            AlgorithmHint::ALGO_HINT_DEFAULT,
+        )?;
+
+        let bytes = rgba_frame.data_bytes()?;
+
+        let new_frame_data = unsafe {
+            compute_state.as_mut().unwrap_unchecked().send_frame(
+                &bytes,
+                match index {
+                    FRAME_COUNT => Some(()),
+                    _ => None,
+                },
+                None,
+            )
+        };
+
+        let new_frame =
+            match Mat::new_rows_cols_with_bytes::<VecN<u8, 4>>(width, height, &new_frame_data) {
+                Ok(t) => t,
+                Err(err) => {
+                    println!("Error: {:#?}", err);
+                    return Err(anyhow::Error::new(err));
+                }
+            };
+
+        let mut output_frame = Mat::default();
+        imgproc::cvt_color(
+            &new_frame,
+            &mut output_frame,
+            imgproc::COLOR_RGBA2BGR,
+            0,
+            AlgorithmHint::ALGO_HINT_DEFAULT,
+        )?;
+
+        if index <= FRAME_COUNT {
+            index += 1;
+        }
+
+        match highgui::imshow("DiPs", &new_frame) {
+            Ok(_) => (),
+            Err(err) => println!("Error: {:#?}", err),
+        }
+
+        let key = highgui::wait_key(1)?;
+
+        if key == 'q' as i32 {
+            break;
+        }
+    }
+
+    Ok(())
 }

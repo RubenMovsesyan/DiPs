@@ -283,7 +283,6 @@ impl DiPsCompute {
                     .iter()
                     .map(|(texture_view, _texture)| texture_view)
                     .collect(),
-                "dips_compute/shaders/pre_compute_shader.wgsl",
             );
 
         let snapshot_texture_view = {
