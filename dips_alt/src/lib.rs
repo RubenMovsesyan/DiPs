@@ -1,4 +1,4 @@
-use std::{error::Error, path::Path, rc::Rc, sync::Arc};
+use std::{error::Error, fs, path::Path, rc::Rc, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use dips_compute::{ChromaFilter, DiPsCompute, DiPsProperties, Filter};
@@ -6,7 +6,7 @@ use egui_wgpu::ScreenDescriptor;
 use gui::EguiRenderer;
 use log::*;
 use opencv::{
-    core::{AlgorithmHint, VecN},
+    core::{AlgorithmHint, CV_8U, Mat_AUTO_STEP, VecN},
     highgui, imgproc,
     prelude::*,
     videoio::{self, VideoCaptureTraitConst},
@@ -208,6 +208,8 @@ impl DiPsApp {
         let width = self.frame.rows();
         let height = self.frame.cols();
 
+        // println!("w: {} h: {}", width, height);
+
         if self.compute.is_none() {
             self.compute = Some(DiPsCompute::new(
                 FRAME_COUNT,
@@ -347,6 +349,7 @@ impl DiPsApp {
                                     self.spatial_window_size,
                                 ));
                             };
+
                             if ui
                                 .selectable_value(
                                     &mut self.filter_type,
@@ -555,16 +558,18 @@ impl ApplicationHandler for DiPsApp {
     }
 }
 
-pub fn run_dips_app() {
+pub fn run_dips_app() -> anyhow::Result<()> {
     let event_loop = EventLoop::new().unwrap();
 
     event_loop.set_control_flow(ControlFlow::Poll);
 
     let mut app = DiPsApp::new().expect("Failed to create DiPs");
     _ = event_loop.run_app(&mut app);
+
+    Ok(())
 }
 
-pub fn run_dips_on_file<P>(path: P) -> Result<()>
+pub fn run_dips_on_file<P>(path: P, output: P) -> Result<()>
 where
     P: AsRef<Path>,
 {
@@ -614,6 +619,11 @@ where
         videoio::CAP_ANY,
     )?;
 
+    let fps = file_stream.get(videoio::CAP_PROP_FPS)?;
+
+    let fourcc = videoio::VideoWriter::fourcc('H', 'E', 'V', 'C')?;
+    let mut output_stream = None;
+
     if !file_stream.is_opened()? {
         panic!("Failed to open file");
     }
@@ -622,7 +632,12 @@ where
     let mut compute_state: Option<DiPsCompute> = None;
 
     loop {
-        file_stream.read(&mut frame)?;
+        if !file_stream.read(&mut frame)? {
+            break;
+        }
+
+        let pts = file_stream.get(videoio::CAP_PROP_PTS)?;
+        let dts = file_stream.get(videoio::CAP_PROP_DTS_DELAY)?;
 
         let width = frame.rows();
         let height = frame.cols();
@@ -636,6 +651,16 @@ where
                 device.clone(),
                 queue.clone(),
                 DiPsProperties::default(),
+            )?);
+        }
+
+        if output_stream.is_none() {
+            output_stream = Some(videoio::VideoWriter::new(
+                output.as_ref().as_os_str().to_str().unwrap(),
+                fourcc,
+                fps,
+                opencv::core::Size::new(height, width),
+                true,
             )?);
         }
 
@@ -684,7 +709,227 @@ where
             index += 1;
         }
 
-        match highgui::imshow("DiPs", &new_frame) {
+        // println!();
+        if let Some(stream) = output_stream.as_mut() {
+            println!("pts: {}", pts);
+            stream.set(videoio::VIDEOWRITER_PROP_PTS, pts)?;
+            stream.set(videoio::VIDEOWRITER_PROP_DTS_DELAY, dts)?;
+            stream.write(&output_frame)?;
+        }
+        // output_stream
+        //         .as_mut()
+        //         .unwrap_unchecked()
+        //         .write(&output_frame)?;
+
+        match highgui::imshow("DiPs", &output_frame) {
+            Ok(_) => (),
+            Err(err) => println!("Error: {:#?}", err),
+        }
+
+        // let key = highgui::wait_key(1)?;
+
+        // if key == 'q' as i32 {
+        //     break;
+        // }
+    }
+
+    if let Some(mut writer) = output_stream.take() {
+        writer.release()?;
+    }
+
+    Ok(())
+}
+
+pub fn custom_dips_on_files<P>(config_path: P, data_dir: P, output: P) -> Result<()>
+where
+    P: AsRef<Path>,
+{
+    // Initialize WGPU and attach it to a window if provided
+    let instance = Instance::new(&InstanceDescriptor {
+        backends: Backends::all(),
+        ..Default::default()
+    });
+
+    let adapter = instance
+        .request_adapter(&RequestAdapterOptionsBase {
+            power_preference: PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: None,
+        })
+        .block_on()
+        .ok_or(anyhow!("Couldn't create the adapter"))?;
+
+    let (device, queue) = match adapter
+        .request_device(
+            &DeviceDescriptor {
+                label: Some("Device and Queue"),
+                required_features: Features::TEXTURE_BINDING_ARRAY
+                    | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+                required_limits: Limits {
+                    max_bind_groups: 5,
+                    ..Default::default()
+                },
+                memory_hints: MemoryHints::default(),
+            },
+            None,
+        )
+        .block_on()
+    {
+        Ok((device, queue)) => (device, queue),
+        Err(err) => panic!("{err}"),
+    };
+
+    let (device, queue) = (Rc::new(device), Rc::new(queue));
+
+    let mut index: usize = 0;
+
+    highgui::named_window("DiPs", highgui::WINDOW_NORMAL)?;
+
+    // let mut file_stream = videoio::VideoCapture::from_file(
+    //     path.as_ref().as_os_str().to_str().unwrap(),
+    //     videoio::CAP_ANY,
+    // )?;
+
+    let fourcc = videoio::VideoWriter::fourcc('H', 'F', 'Y', 'U')?;
+    let mut output_stream = None;
+
+    // if !file_stream.is_opened()? {
+    //     panic!("Failed to open file");
+    // }
+
+    // let mut frame = Mat::default();
+    let mut compute_state: Option<DiPsCompute> = None;
+
+    let mut paths = fs::read_dir(data_dir)
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect::<Vec<_>>();
+
+    paths.sort_by_key(|dir| {
+        dir.path()
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string()
+            .replace(&['D', 'a', 't', '_', '.', 'd'][..], "")
+            .parse::<u32>()
+            .unwrap_or(0)
+    });
+
+    let mut split_index = 0;
+    while paths[split_index]
+        .file_name()
+        .into_string()
+        .unwrap()
+        .chars()
+        .nth(0)
+        .as_ref()
+        .unwrap()
+        != &'D'
+    {
+        split_index += 1;
+    }
+
+    paths = paths.split_off(split_index);
+
+    // println!("{:#?}", paths);
+
+    let width = 273;
+    let height = 640;
+
+    for file_path in paths.iter() {
+        // let frame_available = file_stream.read(&mut frame)?;
+        let file_data = &fs::read(file_path.path()).unwrap()[4..];
+        // let conv_data: &[i32] = bytemuck::cast_slice(file_data);
+        // println!("{}", file_data.len());
+        let frame = Mat::new_rows_cols_with_bytes::<VecN<u8, 4>>(width, height, file_data)?;
+        // let width = frame.rows();
+        // let height = frame.cols();
+
+        if compute_state.is_none() {
+            compute_state = Some(DiPsCompute::new(
+                FRAME_COUNT,
+                width as u32,
+                height as u32,
+                None,
+                device.clone(),
+                queue.clone(),
+                DiPsProperties::default(),
+            )?);
+        }
+
+        if output_stream.is_none() {
+            output_stream = Some(videoio::VideoWriter::new(
+                output.as_ref().as_os_str().to_str().unwrap(),
+                fourcc,
+                5.0,
+                opencv::core::Size::new(height, width),
+                true,
+            )?);
+        }
+
+        // let mut rgba_frame = Mat::default();
+
+        // imgproc::cvt_color(
+        //     &frame,
+        //     &mut rgba_frame,
+        //     imgproc::COLOR_BGR2RGBA,
+        //     0,
+        //     AlgorithmHint::ALGO_HINT_DEFAULT,
+        // )?;
+
+        // let bytes = rgba_frame.data_bytes()?;
+        let bytes = frame.data_bytes()?;
+        // println!("len: {}", bytes.len());
+
+        let new_frame_data = unsafe {
+            compute_state.as_mut().unwrap_unchecked().send_frame(
+                &bytes,
+                match index {
+                    FRAME_COUNT => Some(()),
+                    _ => None,
+                },
+                None,
+            )
+        };
+
+        let new_frame =
+            match Mat::new_rows_cols_with_bytes::<VecN<u8, 4>>(width, height, &new_frame_data) {
+                Ok(t) => t,
+                Err(err) => {
+                    println!("Error: {:#?}", err);
+                    return Err(anyhow::Error::new(err));
+                }
+            };
+
+        let mut output_frame = Mat::default();
+        imgproc::cvt_color(
+            &new_frame,
+            &mut output_frame,
+            imgproc::COLOR_RGBA2BGR,
+            0,
+            AlgorithmHint::ALGO_HINT_DEFAULT,
+        )?;
+
+        if index <= FRAME_COUNT {
+            index += 1;
+        }
+
+        println!("{:#?}", &output_frame);
+
+        match unsafe {
+            output_stream
+                .as_mut()
+                .unwrap_unchecked()
+                .write(&output_frame)
+        } {
+            Ok(_) => (),
+            // Ok(false) => error!("Failed to write frame to video file"),
+            Err(e) => error!("Error Writing frame: {}", e),
+        }
+
+        match highgui::imshow("DiPs", &output_frame) {
             Ok(_) => (),
             Err(err) => println!("Error: {:#?}", err),
         }
@@ -694,6 +939,11 @@ where
         if key == 'q' as i32 {
             break;
         }
+    }
+
+    // output_stream.as_mut().unwrap().release()?;
+    if let Some(mut writer) = output_stream {
+        writer.release()?;
     }
 
     Ok(())
