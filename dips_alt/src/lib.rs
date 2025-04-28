@@ -3,10 +3,11 @@ use std::{error::Error, fs, path::Path, rc::Rc, sync::Arc};
 use anyhow::{Result, anyhow};
 use dips_compute::{ChromaFilter, DiPsCompute, DiPsProperties, Filter};
 use egui_wgpu::ScreenDescriptor;
+use gpu_controller::GpuController;
 use gui::EguiRenderer;
 use log::*;
 use opencv::{
-    core::{AlgorithmHint, CV_8U, Mat_AUTO_STEP, VecN},
+    core::{AlgorithmHint, VecN},
     highgui, imgproc,
     prelude::*,
     videoio::{self, VideoCaptureTraitConst},
@@ -14,7 +15,7 @@ use opencv::{
 use pollster::FutureExt;
 use wgpu::{
     Adapter, Backends, CommandEncoderDescriptor, Device, DeviceDescriptor, Features, Instance,
-    InstanceDescriptor, Limits, MemoryHints, PowerPreference, PresentMode, Queue,
+    InstanceDescriptor, Limits, MemoryHints, PowerPreference, PresentMode,
     RequestAdapterOptionsBase, Surface, SurfaceConfiguration, SurfaceTexture, TextureUsages,
     TextureViewDescriptor,
 };
@@ -27,10 +28,28 @@ use winit::{
 };
 
 mod dips_compute;
+mod gpu_controller;
 mod gui;
 mod utils;
 
 const FRAME_COUNT: usize = 2;
+
+#[derive(Debug)]
+pub enum Encoding {
+    Uncompressed,
+    Huffman,
+}
+
+impl Encoding {
+    fn as_fourcc(&self) -> i32 {
+        match self {
+            Encoding::Uncompressed => {
+                videoio::VideoWriter::fourcc('R', 'G', 'B', 'A').expect("Failed")
+            }
+            Encoding::Huffman => videoio::VideoWriter::fourcc('H', 'F', 'Y', 'U').expect("Failed"),
+        }
+    }
+}
 
 #[derive(Debug)]
 struct DiPsWindow {
@@ -93,10 +112,7 @@ pub struct DiPsApp {
     dips_window: Option<DiPsWindow>,
 
     // WGPU
-    device: Rc<Device>,
-    queue: Rc<Queue>,
-    instance: Instance,
-    adapter: Adapter,
+    gpu_controller: GpuController,
 
     surface_texture: Option<SurfaceTexture>,
 
@@ -116,42 +132,7 @@ pub struct DiPsApp {
 
 impl DiPsApp {
     pub fn new() -> Result<Self> {
-        // Initialize WGPU and attach it to a window if provided
-        let instance = Instance::new(&InstanceDescriptor {
-            backends: Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter = instance
-            .request_adapter(&RequestAdapterOptionsBase {
-                power_preference: PowerPreference::HighPerformance,
-                force_fallback_adapter: false,
-                compatible_surface: None,
-            })
-            .block_on()
-            .ok_or(anyhow!("Couldn't create the adapter"))?;
-
-        let (device, queue) = match adapter
-            .request_device(
-                &DeviceDescriptor {
-                    label: Some("Device and Queue"),
-                    required_features: Features::TEXTURE_BINDING_ARRAY
-                        | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
-                    required_limits: Limits {
-                        max_bind_groups: 5,
-                        ..Default::default()
-                    },
-                    memory_hints: MemoryHints::default(),
-                },
-                None,
-            )
-            .block_on()
-        {
-            Ok((device, queue)) => (device, queue),
-            Err(err) => panic!("{err}"),
-        };
-
-        let (device, queue) = (Rc::new(device), Rc::new(queue));
+        let gpu_controller = GpuController::new()?;
 
         let camera = videoio::VideoCapture::new(0, videoio::CAP_ANY)?;
 
@@ -161,10 +142,7 @@ impl DiPsApp {
 
         Ok(Self {
             dips_window: None,
-            device,
-            queue,
-            instance,
-            adapter,
+            gpu_controller,
             compute: None,
             egui_renderer: None,
             camera,
@@ -184,14 +162,14 @@ impl DiPsApp {
             event_loop,
             self.camera.get(videoio::CAP_PROP_FRAME_WIDTH)? as u32,
             self.camera.get(videoio::CAP_PROP_FRAME_HEIGHT)? as u32,
-            &self.instance,
-            &self.adapter,
-            &self.device,
+            &self.gpu_controller.instance,
+            &self.gpu_controller.adapter,
+            &self.gpu_controller.device,
         )?);
 
         self.egui_renderer = Some(EguiRenderer::new(
-            self.device.clone(),
-            self.queue.clone(),
+            self.gpu_controller.device.clone(),
+            self.gpu_controller.queue.clone(),
             self.dips_window.as_ref().unwrap().surface_config.format,
             None,
             1,
@@ -216,8 +194,8 @@ impl DiPsApp {
                 width as u32,
                 height as u32,
                 self.dips_window.as_ref(),
-                self.device.clone(),
-                self.queue.clone(),
+                self.gpu_controller.device.clone(),
+                self.gpu_controller.queue.clone(),
                 DiPsProperties::default(),
             )?);
         }
@@ -269,11 +247,12 @@ impl DiPsApp {
                 .texture
                 .create_view(&TextureViewDescriptor::default());
 
-            let mut encoder = self
-                .device
-                .create_command_encoder(&CommandEncoderDescriptor {
-                    label: Some("GUI Command Encoder"),
-                });
+            let mut encoder =
+                self.gpu_controller
+                    .device
+                    .create_command_encoder(&CommandEncoderDescriptor {
+                        label: Some("GUI Command Encoder"),
+                    });
 
             renderer.begin_frame(&self.dips_window.as_ref().unwrap().window);
 
@@ -297,8 +276,8 @@ impl DiPsApp {
                                 .height,
                             self.dips_window.as_ref().unwrap().window.inner_size().width,
                             self.dips_window.as_ref(),
-                            self.device.clone(),
-                            self.queue.clone(),
+                            self.gpu_controller.device.clone(),
+                            self.gpu_controller.queue.clone(),
                             DiPsProperties {
                                 colorize: color,
                                 filter_type: filter,
@@ -569,47 +548,18 @@ pub fn run_dips_app() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn run_dips_on_file<P>(path: P, output: P) -> Result<()>
+pub fn run_dips_on_file<P>(
+    path: P,
+    output: P,
+    encoding: Encoding,
+    refresh_markers: Vec<usize>,
+) -> Result<()>
 where
     P: AsRef<Path>,
 {
-    // Initialize WGPU and attach it to a window if provided
-    let instance = Instance::new(&InstanceDescriptor {
-        backends: Backends::all(),
-        ..Default::default()
-    });
+    let gpu_controller = GpuController::new()?;
 
-    let adapter = instance
-        .request_adapter(&RequestAdapterOptionsBase {
-            power_preference: PowerPreference::HighPerformance,
-            force_fallback_adapter: false,
-            compatible_surface: None,
-        })
-        .block_on()
-        .ok_or(anyhow!("Couldn't create the adapter"))?;
-
-    let (device, queue) = match adapter
-        .request_device(
-            &DeviceDescriptor {
-                label: Some("Device and Queue"),
-                required_features: Features::TEXTURE_BINDING_ARRAY
-                    | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
-                required_limits: Limits {
-                    max_bind_groups: 5,
-                    ..Default::default()
-                },
-                memory_hints: MemoryHints::default(),
-            },
-            None,
-        )
-        .block_on()
-    {
-        Ok((device, queue)) => (device, queue),
-        Err(err) => panic!("{err}"),
-    };
-
-    let (device, queue) = (Rc::new(device), Rc::new(queue));
-
+    let mut overall_frame: usize = 0;
     let mut index: usize = 0;
 
     highgui::named_window("DiPs", highgui::WINDOW_NORMAL)?;
@@ -621,7 +571,8 @@ where
 
     let fps = file_stream.get(videoio::CAP_PROP_FPS)?;
 
-    let fourcc = videoio::VideoWriter::fourcc('H', 'E', 'V', 'C')?;
+    // let fourcc = videoio::VideoWriter::fourcc('R', 'G', 'B', 'A')?;
+    let fourcc = encoding.as_fourcc();
     let mut output_stream = None;
 
     if !file_stream.is_opened()? {
@@ -648,8 +599,8 @@ where
                 width as u32,
                 height as u32,
                 None,
-                device.clone(),
-                queue.clone(),
+                gpu_controller.device.clone(),
+                gpu_controller.queue.clone(),
                 DiPsProperties::default(),
             )?);
         }
@@ -709,28 +660,23 @@ where
             index += 1;
         }
 
-        // println!();
+        overall_frame += 1;
+
+        if refresh_markers.contains(&overall_frame) {
+            index = 0;
+        }
+
         if let Some(stream) = output_stream.as_mut() {
-            println!("pts: {}", pts);
+            print!("\rFrame: {}", overall_frame);
             stream.set(videoio::VIDEOWRITER_PROP_PTS, pts)?;
             stream.set(videoio::VIDEOWRITER_PROP_DTS_DELAY, dts)?;
             stream.write(&output_frame)?;
         }
-        // output_stream
-        //         .as_mut()
-        //         .unwrap_unchecked()
-        //         .write(&output_frame)?;
 
         match highgui::imshow("DiPs", &output_frame) {
             Ok(_) => (),
             Err(err) => println!("Error: {:#?}", err),
         }
-
-        // let key = highgui::wait_key(1)?;
-
-        // if key == 'q' as i32 {
-        //     break;
-        // }
     }
 
     if let Some(mut writer) = output_stream.take() {
@@ -790,7 +736,7 @@ where
     //     videoio::CAP_ANY,
     // )?;
 
-    let fourcc = videoio::VideoWriter::fourcc('H', 'F', 'Y', 'U')?;
+    let fourcc = videoio::VideoWriter::fourcc('R', 'G', 'B', 'A')?;
     let mut output_stream = None;
 
     // if !file_stream.is_opened()? {
