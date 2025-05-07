@@ -1,7 +1,8 @@
-use std::{error::Error, fs, path::Path, rc::Rc, sync::Arc};
+use std::{fs, path::Path, rc::Rc, sync::Arc};
 
 use anyhow::{Result, anyhow};
-use dips_compute::{ChromaFilter, DiPsCompute, DiPsProperties, Filter};
+use dips_compute::DiPsCompute;
+pub use dips_compute::{ChromaFilter, DiPsProperties, Filter};
 use egui_wgpu::ScreenDescriptor;
 use gpu_controller::GpuController;
 use gui::EguiRenderer;
@@ -38,6 +39,7 @@ const FRAME_COUNT: usize = 2;
 pub enum Encoding {
     Uncompressed,
     Huffman,
+    H264,
 }
 
 impl Encoding {
@@ -47,6 +49,7 @@ impl Encoding {
                 videoio::VideoWriter::fourcc('R', 'G', 'B', 'A').expect("Failed")
             }
             Encoding::Huffman => videoio::VideoWriter::fourcc('H', 'F', 'Y', 'U').expect("Failed"),
+            Encoding::H264 => videoio::VideoWriter::fourcc('H', '2', '6', '4').expect("Failed"),
         }
     }
 }
@@ -552,6 +555,7 @@ pub fn run_dips_on_file<P>(
     path: P,
     output: P,
     encoding: Encoding,
+    properites: DiPsProperties,
     refresh_markers: Vec<usize>,
 ) -> Result<()>
 where
@@ -571,7 +575,6 @@ where
 
     let fps = file_stream.get(videoio::CAP_PROP_FPS)?;
 
-    // let fourcc = videoio::VideoWriter::fourcc('R', 'G', 'B', 'A')?;
     let fourcc = encoding.as_fourcc();
     let mut output_stream = None;
 
@@ -601,7 +604,7 @@ where
                 None,
                 gpu_controller.device.clone(),
                 gpu_controller.queue.clone(),
-                DiPsProperties::default(),
+                properites,
             )?);
         }
 
@@ -686,6 +689,7 @@ where
     Ok(())
 }
 
+#[allow(unused_variables)]
 pub fn custom_dips_on_files<P>(config_path: P, data_dir: P, output: P) -> Result<()>
 where
     P: AsRef<Path>,

@@ -164,7 +164,7 @@ pub enum ChromaFilter {
     Blue = 3,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct DiPsProperties {
     pub colorize: bool,
     pub window_size: u8,
@@ -205,6 +205,31 @@ impl DiPsProperties {
         );
 
         hm
+    }
+
+    pub fn set_filter(&mut self, filter: Filter) {
+        self.filter_type = filter;
+    }
+
+    pub fn set_chroma_filter(&mut self, chroma_filter: ChromaFilter) {
+        self.chroma_filter = chroma_filter;
+    }
+
+    pub fn set_sigmoid_horizontal_scalar(&mut self, scalar: f32) {
+        // TODO: Export into consts
+        self.sigmoid_horizontal_scalar = scalar.clamp(1.0, 10.0);
+    }
+
+    pub fn set_window_size(&mut self, size: u8) {
+        // TODO: Export into consts
+        self.window_size = size.clamp(1, 7);
+        if self.window_size % 2 == 0 {
+            self.window_size -= 1;
+        }
+    }
+
+    pub fn set_colorize(&mut self, colorize: bool) {
+        self.colorize = colorize;
     }
 }
 
