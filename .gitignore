@@ -3,3 +3,4 @@ test_files/
 test_scripts/env/
 **/appimage/
 **/.DS_Store
+**/env/
