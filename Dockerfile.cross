@@ -1,0 +1,45 @@
+FROM ubuntu:22.04
+
+# Set environment variables to avoid interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    libopencv-dev \
+    libopencv-contrib-dev \
+    clang \
+    llvm-dev \
+    libclang-dev \
+    cmake \
+    git \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up OpenCV environment variables
+ENV PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig
+ENV OPENCV_LINK_LIBS=opencv_core,opencv_imgproc,opencv_imgcodecs,opencv_highgui,opencv_video,opencv_videoio,opencv_calib3d,opencv_features2d,opencv_objdetect,opencv_dnn,opencv_ml,opencv_flann,opencv_photo,opencv_stitching,opencv_gapi
+ENV OPENCV_LINK_PATHS=/usr/lib/x86_64-linux-gnu
+ENV OPENCV_INCLUDE_PATHS=/usr/include/opencv4
+
+# Install additional OpenCV modules that might be needed
+RUN apt-get update && apt-get install -y \
+    libopencv-imgproc-dev \
+    libopencv-imgcodecs-dev \
+    libopencv-video-dev \
+    libopencv-calib3d-dev \
+    libopencv-features2d-dev \
+    libopencv-objdetect-dev \
+    libopencv-highgui-dev \
+    libopencv-videoio-dev \
+    libopencv-stitching-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up environment for OpenCV linking
+ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+
+# Create a symlink for libstdc++ if needed
+RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /usr/lib/x86_64-linux-gnu/libstdc++.so || true

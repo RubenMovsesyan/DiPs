@@ -10,8 +10,14 @@ egui = "0.31.1"
 egui-wgpu = "0.31.1"
 egui-winit = "0.31.1"
 log = "0.4.27"
-opencv = { version = "0.94.3", features = ["clang-runtime"] }
+opencv = { version = "0.94.3", features = ["clang-runtime"], optional = true }
 pollster = "0.4.0"
 pretty_env_logger = "0.5.0"
 wgpu = "24.0.3"
 winit = "0.30.9"
+
+[features]
+default = ["opencv"]
+opencv = ["dep:opencv"]
+minimal = []
+cross-compile = []

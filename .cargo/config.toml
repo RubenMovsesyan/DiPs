@@ -1,3 +1,38 @@
 [target.x86_64-unknown-linux-gnu]
-linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold"]
+linker = "x86_64-linux-gnu-gcc"
+
+[env]
+# Cross-compilation environment variables
+CC_x86_64_unknown_linux_gnu = "x86_64-linux-gnu-gcc"
+CXX_x86_64_unknown_linux_gnu = "x86_64-linux-gnu-g++"
+AR_x86_64_unknown_linux_gnu = "x86_64-linux-gnu-ar"
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER = "x86_64-linux-gnu-gcc"
+
+# OpenCV cross-compilation settings
+PKG_CONFIG_ALLOW_CROSS = "1"
+OPENCV_DISABLE_PROBES = "1"
+OPENCV_DISABLE_PKG_CONFIG = "1"
+
+[target.x86_64-unknown-linux-gnu.env]
+# OpenCV library configuration for Linux target
+OPENCV_LINK_LIBS = "opencv_core,opencv_imgproc,opencv_imgcodecs,opencv_highgui,opencv_video,opencv_videoio,opencv_calib3d,opencv_features2d,opencv_objdetect,opencv_dnn,opencv_ml,opencv_flann,opencv_photo,opencv_stitching,opencv_gapi"
+OPENCV_LINK_PATHS = "/usr/lib/x86_64-linux-gnu"
+OPENCV_INCLUDE_PATHS = "/usr/include/opencv4"
+
+# Additional OpenCV settings
+OPENCV_PKGCONFIG_NAME = "opencv4"
+OPENCV_CMAKE_NAME = "OpenCV"
+
+# # Linker flags for Linux target
+RUSTFLAGS = "-C link-arg=-Wl --allow-multiple-definition"
+
+[build]
+# Global build settings
+target-dir = "target"
+
+[profile.release]
+# Optimization settings for release builds
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
