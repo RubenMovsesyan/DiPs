@@ -2,7 +2,7 @@ use anyhow::Result;
 use libdips::{DiPs, DiPsProperties, Features, GpuController, Limits};
 use opencv::{
     core::{AlgorithmHint, VecN},
-    highgui, imgproc,
+    imgproc,
     prelude::*,
     videoio::{self, VideoCaptureTrait, VideoCaptureTraitConst},
 };
@@ -33,8 +33,6 @@ where
 
     let mut overall_frame: usize = 0;
     let mut index: usize = 0;
-
-    highgui::named_window("DiPs", highgui::WINDOW_NORMAL)?;
 
     let mut file_stream = videoio::VideoCapture::from_file(
         path.as_ref().as_os_str().to_str().unwrap(),
@@ -141,12 +139,8 @@ where
             stream.set(videoio::VIDEOWRITER_PROP_DTS_DELAY, dts)?;
             stream.write(&output_frame)?;
         }
-
-        match highgui::imshow("DiPs", &output_frame) {
-            Ok(_) => (),
-            Err(err) => println!("Error: {:#?}", err),
-        }
     }
+    println!();
 
     if let Some(mut writer) = output_stream.take() {
         writer.release()?;
