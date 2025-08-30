@@ -23,7 +23,7 @@ where
     P: AsRef<Path>,
 {
     let gpu_controller = smol::block_on(GpuController::new(
-        Some(Features::TEXTURE_BINDING_ARRAY | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES),
+        Some(Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES),
         Some(Limits {
             max_bind_groups: 5,
             ..Default::default()
