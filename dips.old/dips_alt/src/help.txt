@@ -1,0 +1,59 @@
+usage:
+    dips [OPTIONS]
+
+example:
+    dips --input=./input.avi --output=./output.avi --encoding=H264
+
+OPTIONS:
+
+    --input=
+        input file to run dips on
+
+    --output=
+        output file to run dips into
+
+    --encoding=
+        Video encoding to save the video into
+
+        formats supported:
+            Uncompressed:   "RGBA"
+            Huffman:        "HFYU"
+            H.264:          "H264"
+
+    --filter=
+        filter to use on the dips
+
+        filters supported:
+            Sigmoid:            "sigmoid"
+            Inverse Sigmoid:    "inv_sig"
+
+
+    --sig_scalar=
+        scalar for the filter to use clamps the value between 1 and 10
+
+    --chroma=
+        chroma filter for dips to use
+
+        filters supported:
+            red:    "r"
+            green:  "g"
+            blue:   "b"
+            none:   ""
+
+    --win_size=
+        window size to use in the spatial filter
+        odd number clamped between 1 and 7
+
+    --colorize=
+        boolean if the output should be colorized
+        true by default
+
+        options:
+            on:     "true"
+            off:    "false"
+
+    --live
+        run dips in live mode
+
+    --help
+        Show this help page

@@ -1,0 +1,13 @@
+[package]
+name = "libdips"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.99"
+bytemuck = "1.23.2"
+egui = "0.32.1"
+egui-wgpu = "0.32.1"
+egui-winit = "0.32.1"
+gpu_controller = { path = "../../isotope/gpu_controller" }
+winit = "0.30.12"

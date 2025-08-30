@@ -3,6 +3,8 @@ use std::{collections::HashMap, rc::Rc};
 use anyhow::Result;
 use dynamic_texture_array::create_dynamic_bindings;
 use wgpu::{
+    include_wgsl,
+    util::{BufferInitDescriptor, DeviceExt},
     AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
     Buffer, BufferBindingType, BufferDescriptor, BufferUsages, Color, ColorTargetState,
@@ -15,11 +17,10 @@ use wgpu::{
     SurfaceConfiguration, SurfaceTexture, TexelCopyBufferInfo, TexelCopyBufferLayout,
     TexelCopyTextureInfo, Texture, TextureAspect, TextureDescriptor, TextureDimension,
     TextureFormat, TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor,
-    TextureViewDimension, VertexState, include_wgsl,
-    util::{BufferInitDescriptor, DeviceExt},
+    TextureViewDimension, VertexState,
 };
 
-use crate::{DiPsWindow, utils::indexing::UCircularIndex};
+use crate::{utils::indexing::UCircularIndex, DiPsWindow};
 
 mod dynamic_texture_array;
 

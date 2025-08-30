@@ -1,0 +1,16 @@
+[package]
+name = "dips"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.96"
+bytemuck = "1.22.0"
+gstreamer = "0.23.5"
+gstreamer-app = "0.23.5"
+gstreamer-pbutils = "0.23.5"
+gstreamer-video = "0.23.5"
+image = "0.25.5"
+log = "0.4.25"
+pollster = "0.4.0"
+wgpu = "24.0.1"
