@@ -1,6 +1,9 @@
 use anyhow::*;
+use dips_run::run_dips_on_file;
 use libdips::*;
-use opencv::videoio::{self, VideoWriter};
+use opencv::videoio::VideoWriter;
+
+mod dips_run;
 
 #[derive(Debug)]
 pub enum Encoding {

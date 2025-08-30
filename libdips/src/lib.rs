@@ -6,15 +6,15 @@ use gpu_controller::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferBindingType,
     BufferDescriptor, BufferInitDescriptor, BufferUsages, Color, ComputePassDescriptor,
-    ComputePipeline, ComputePipelineDescriptor, Extent3d, GpuController, LoadOp, MaintainBase,
-    MapMode, Operations, Origin3d, PipelineCompilationOptions, PipelineLayoutDescriptor,
+    ComputePipeline, ComputePipelineDescriptor, Extent3d, LoadOp, MaintainBase, MapMode,
+    Operations, Origin3d, PipelineCompilationOptions, PipelineLayoutDescriptor,
     RenderPassColorAttachment, RenderPassDescriptor, ShaderModule, ShaderStages,
     StorageTextureAccess, StoreOp, SurfaceTexture, TexelCopyBufferInfo, TexelCopyBufferLayout,
     TexelCopyTextureInfo, Texture, TextureAspect, TextureDescriptor, TextureDimension,
     TextureFormat, TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension,
 };
+pub use gpu_controller::{Features, GpuController, Limits};
 pub use properties::{ChromaFilter, DiPsProperties, Filter};
-use renderer::Renderer;
 
 mod circular_index;
 mod properties;
@@ -379,7 +379,7 @@ impl DiPs {
             output_buffer,
             texture_dimensions: Extent3d {
                 width: textures_height,
-                height: textures_height,
+                height: textures_width,
                 depth_or_array_layers: 1,
             },
             texture_index: UCircularIndex::new(0, num_textures),
