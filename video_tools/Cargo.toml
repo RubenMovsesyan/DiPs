@@ -1,0 +1,9 @@
+[package]
+name = "video_tools"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.99"
+ffmpeg-next = "8.0.0"
+ffmpeg-sys-next = "8.0.1"

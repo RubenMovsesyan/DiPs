@@ -1,0 +1,144 @@
+use std::{
+    fs::File,
+    io::{BufReader, Read},
+    path::Path,
+};
+
+use anyhow::{Result, anyhow};
+use ffmpeg_sys_next::{
+    AV_NOPTS_VALUE, AVCodecContext, AVCodecID, AVERROR, AVERROR_EOF, AVFrame, AVPacket, EAGAIN,
+    av_frame_alloc, av_packet_alloc, av_parser_init, av_parser_parse2, avcodec_alloc_context3,
+    avcodec_find_decoder, avcodec_open2, avcodec_receive_frame, avcodec_send_packet,
+};
+
+unsafe fn get_ref<T>(ptr: &*const T) -> &T {
+    unsafe { ptr.as_ref().unwrap_unchecked() }
+}
+
+unsafe fn get_mut<T>(ptr: &*mut T) -> &mut T {
+    unsafe { ptr.as_mut().unwrap_unchecked() }
+}
+
+const INBUF_SIZE: usize = 4096;
+
+fn decode(
+    codec_context: *mut AVCodecContext,
+    frame: *mut AVFrame,
+    packet: *mut AVPacket,
+) -> Result<()> {
+    let mut ret = unsafe { avcodec_send_packet(codec_context, packet) };
+    if ret < 0 {
+        return Err(anyhow!("Error Sending Packet"));
+    }
+
+    while ret >= 0 {
+        ret = unsafe { avcodec_receive_frame(codec_context, frame) };
+        if ret == AVERROR(EAGAIN) || ret == AVERROR_EOF {
+            return Ok(());
+        } else if ret < 0 {
+            return Err(anyhow!("Error during decoding"));
+        }
+
+        let frame_ptr = unsafe { get_mut(&frame) };
+
+        println!(
+            "Decoded frame: {} {} {}",
+            frame_ptr.width,
+            frame_ptr.height,
+            frame_ptr.data.len()
+        );
+    }
+
+    todo!()
+}
+
+pub fn decode_video<P>(input_file: P) -> Result<()>
+where
+    P: AsRef<Path>,
+{
+    let file = File::open(&input_file)?;
+    let mut reader = BufReader::new(file);
+
+    let packet = unsafe {
+        let packet_ptr = av_packet_alloc();
+        if packet_ptr.is_null() {
+            Err(anyhow!("Could not allocate packet"))
+        } else {
+            Ok(packet_ptr)
+        }
+    }?;
+
+    let codec = unsafe {
+        let codec_ptr = avcodec_find_decoder(AVCodecID::AV_CODEC_ID_MPEG1VIDEO);
+        if codec_ptr.is_null() {
+            Err(anyhow!("Could Not Find Codec"))
+        } else {
+            Ok(codec_ptr)
+        }
+    }?;
+
+    let parser = unsafe {
+        let parser_ptr = av_parser_init(get_ref(&codec).id as i32);
+        if parser_ptr.is_null() {
+            Err(anyhow!("Could Not Initialize Parser"))
+        } else {
+            Ok(parser_ptr)
+        }
+    }?;
+
+    let video_context = unsafe {
+        let video_context_ptr = avcodec_alloc_context3(codec);
+        if video_context_ptr.is_null() {
+            Err(anyhow!("Could not allocate video context"))
+        } else {
+            Ok(video_context_ptr)
+        }
+    }?;
+
+    if unsafe { avcodec_open2(video_context, codec, std::ptr::null_mut()) } < 0 {
+        return Err(anyhow!("Could not open codec"));
+    }
+
+    let frame = unsafe {
+        let frame_ptr = av_frame_alloc();
+        if frame_ptr.is_null() {
+            Err(anyhow!("Could not allocate frame"))
+        } else {
+            Ok(frame_ptr)
+        }
+    }?;
+
+    let mut inbuf = [0u8; INBUF_SIZE];
+    let inbuf_ptr = inbuf.as_ptr();
+    let mut ret: i32 = 0;
+
+    loop {
+        // Read Raw data from the input file
+        if let Ok(mut data_size) = reader.read(&mut inbuf) {
+            let eof = !data_size;
+            while data_size > 0 || eof != 0 {
+                let packet_ptr = unsafe { get_mut(&packet) };
+                ret = unsafe {
+                    av_parser_parse2(
+                        parser,
+                        video_context,
+                        &mut packet_ptr.data,
+                        &mut packet_ptr.size,
+                        inbuf_ptr,
+                        data_size as i32,
+                        AV_NOPTS_VALUE,
+                        AV_NOPTS_VALUE,
+                        0,
+                    )
+                };
+
+                data_size -= ret as usize;
+
+                println!("Packet size: {}", packet_ptr.size);
+                decode(video_context, frame, packet)?;
+            }
+        } else {
+            return Err(anyhow!("Could not read data from input file"));
+        }
+    }
+}

@@ -1,0 +1,11 @@
+[
+    {
+        "label": "Run with test file",
+        "command": "cargo run",
+        "args": [
+            "--",
+            "--input=test_files/test.avi",
+            "--output=test_files/output.avi"
+        ]
+    }
+]

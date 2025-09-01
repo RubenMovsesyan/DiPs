@@ -1,17 +1,22 @@
 use anyhow::Result;
 use libdips::{DiPs, DiPsProperties, Features, GpuController, Limits};
+
+#[cfg(feature = "opencv")]
 use opencv::{
     core::{AlgorithmHint, VecN},
     imgproc,
     prelude::*,
     videoio::{self, VideoCaptureTrait, VideoCaptureTraitConst},
 };
+
+#[cfg(feature = "ffmpeg")]
 use std::path::Path;
 
 use crate::Encoding;
 
 const FRAME_COUNT: usize = 2;
 
+#[cfg(feature = "opencv")]
 pub fn run_dips_on_file<P>(
     path: P,
     output: P,
@@ -147,4 +152,66 @@ where
     }
 
     Ok(())
+}
+
+#[cfg(feature = "ffmpeg")]
+pub fn run_dips_on_file<P>(
+    path: P,
+    file_output: P,
+    encoding: Encoding,
+    properites: DiPsProperties,
+    refresh_markers: Vec<usize>,
+) -> Result<()>
+where
+    P: AsRef<Path>,
+{
+    use video_tools::modify_video;
+
+    let gpu_controller = smol::block_on(GpuController::new(
+        Some(Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES),
+        Some(Limits {
+            max_bind_groups: 5,
+            ..Default::default()
+        }),
+        None,
+    ))?;
+
+    let mut compute_state: Option<DiPs> = None;
+    let mut index: usize = 0;
+
+    modify_video(path, file_output, |frame_data, video_encoder| {
+        println!("Frame Data Size: {}", frame_data.len());
+        if compute_state.is_none() {
+            compute_state = Some(
+                match DiPs::new(
+                    FRAME_COUNT,
+                    video_encoder.height,
+                    video_encoder.width,
+                    gpu_controller.clone(),
+                    properites,
+                ) {
+                    Ok(dips) => dips,
+                    Err(e) => panic!("DiPs initialization failed: {}", e),
+                },
+            );
+        }
+
+        let new_frame_data = unsafe {
+            compute_state.as_mut().unwrap_unchecked().send_frame(
+                frame_data,
+                match index {
+                    FRAME_COUNT => Some(()),
+                    _ => None,
+                },
+                None,
+            )
+        };
+
+        index += 1;
+
+        match video_encoder.encode_frame(&new_frame_data) {
+            Ok(_) => {}
+            Err(e) => panic!("Error encoding frame: {}", e),
+        }
+    })
 }

@@ -1,6 +1,8 @@
 use anyhow::*;
 use dips_run::run_dips_on_file;
 use libdips::*;
+
+#[cfg(feature = "opencv")]
 use opencv::videoio::VideoWriter;
 
 mod dips_run;
@@ -13,6 +15,7 @@ pub enum Encoding {
 }
 
 impl Encoding {
+    #[cfg(feature = "opencv")]
     fn as_fourcc(&self) -> i32 {
         match self {
             Encoding::Uncompressed => VideoWriter::fourcc('R', 'G', 'B', 'A').expect("Failed"),
